@@ -1,0 +1,3 @@
+# Use Node runtime and ship compiled artifacts
+
+We chose Node 20+ over Bun and Deno because the target audience — design system teams maintaining React/TypeScript codebases — already has Node installed, making `npx @krakoa-labs/cerebro` zero-friction; Bun's main advantage (a single-file compiled binary) solves a distribution problem this audience does not have, and pulling them onto a non-default runtime is a cost without a corresponding benefit. We ship compiled JavaScript in `dist/` (built with `tsup`) rather than relying on Node's `--experimental-strip-types`, to keep compatibility with users on older LTS versions and avoid shipping experimental-flag dependencies.
