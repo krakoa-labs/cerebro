@@ -18,6 +18,10 @@ export interface ParsedBarrel {
   warnings: BarrelWarning[];
 }
 
+type StaticExportEntry = ReturnType<
+  typeof parseSync
+>["module"]["staticExports"][number]["entries"][number];
+
 /**
  * Parses a barrel file and extracts its explicit named exports along with
  * warnings for shapes Cerebro does not yet support (wildcard, bare default).
@@ -38,36 +42,36 @@ export function parseBarrel(sourceText: string, filename: string): ParsedBarrel 
     throw new Error(`Failed to parse ${filename}: ${fatalErrors[0]?.message ?? "unknown error"}`);
   }
 
-  const exports: ParsedExport[] = [];
-  const warnings: BarrelWarning[] = [];
+  const entries = result.module.staticExports.flatMap((stmt) => stmt.entries);
 
-  for (const stmt of result.module.staticExports) {
-    for (const entry of stmt.entries) {
-      const exportKind = entry.exportName.kind;
-      if (exportKind === "None") {
-        warnings.push({
-          code: "wildcard-export",
-          detail: entry.moduleRequest?.value ?? "",
-        });
-        continue;
-      }
-      if (exportKind === "Default") {
-        warnings.push({ code: "default-export", detail: "" });
-        continue;
-      }
-      const name = entry.exportName.name;
-      if (name === null) continue;
-      const source = entry.moduleRequest?.value ?? null;
-      let importedName: string | null = null;
-      if (source !== null && entry.importName.kind === "Name") {
-        const imp = entry.importName.name;
-        if (imp !== null && imp !== "default") {
-          importedName = imp;
-        }
-      }
-      exports.push({ name, source, importedName });
+  const warnings = entries.flatMap<BarrelWarning>((entry) => {
+    if (entry.exportName.kind === "None") {
+      return [{ code: "wildcard-export", detail: entry.moduleRequest?.value ?? "" }];
     }
-  }
+    if (entry.exportName.kind === "Default") {
+      return [{ code: "default-export", detail: "" }];
+    }
+    return [];
+  });
+
+  const exports = entries.flatMap<ParsedExport>((entry) => {
+    if (entry.exportName.kind !== "Name") return [];
+
+    const name = entry.exportName.name;
+    if (name === null) return [];
+
+    const source = entry.moduleRequest?.value ?? null;
+    return [{ name, source, importedName: importedNameOf(entry, source) }];
+  });
 
   return { exports, warnings };
+}
+
+function importedNameOf(entry: StaticExportEntry, source: string | null): string | null {
+  if (source === null || entry.importName.kind !== "Name") return null;
+
+  const imp = entry.importName.name;
+  if (imp === null || imp === "default") return null;
+
+  return imp;
 }

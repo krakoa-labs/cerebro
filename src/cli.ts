@@ -23,23 +23,13 @@ program
   .action((pathArg: string | undefined) => {
     try {
       const cwd = process.cwd();
-      let componentsPath: string;
-      if (pathArg !== undefined) {
-        componentsPath = pathArg;
-      } else {
-        const detected = detectComponentsPath(cwd);
-        if (detected === null) {
-          throw new Error(
-            `Could not detect a components folder.\nTried: ${CONVENTIONAL_COMPONENTS_PATHS.join(", ")}\nProvide an explicit path: cerebro init <path-to-components>`,
-          );
-        }
-        componentsPath = detected;
-        console.log(pc.cyan(`Detected components folder: ${detected}`));
-      }
+      const componentsPath = resolveComponentsPath(pathArg, cwd);
+
       const result = init({ cwd, componentsPath });
       for (const warning of result.warnings) {
         console.warn(pc.yellow(`Warning: ${warning}`));
       }
+
       console.log(
         pc.green(`Created ${CONFIG_FILENAME} (componentsPath: ${result.componentsPath})`),
       );
@@ -58,6 +48,7 @@ program
       for (const warning of result.warnings) {
         console.warn(pc.yellow(`Warning: ${warning}`));
       }
+
       const componentCount = result.components.length;
       const totals = result.components.reduce(
         (acc, c) => ({
@@ -67,6 +58,7 @@ program
         }),
         { total: 0, skipped: 0, only: 0 },
       );
+
       const componentNoun = componentCount === 1 ? "Component" : "Components";
       const testNoun = totals.total === 1 ? "test" : "tests";
       process.stderr.write(
@@ -74,11 +66,26 @@ program
           `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).\n`,
         ),
       );
+
       console.log(JSON.stringify(result.components, null, 2));
     } catch (err) {
       console.error(pc.red(`Error: ${(err as Error).message}`));
       process.exit(1);
     }
   });
+
+function resolveComponentsPath(pathArg: string | undefined, cwd: string): string {
+  if (pathArg !== undefined) return pathArg;
+
+  const detected = detectComponentsPath(cwd);
+  if (detected === null) {
+    throw new Error(
+      `Could not detect a components folder.\nTried: ${CONVENTIONAL_COMPONENTS_PATHS.join(", ")}\nProvide an explicit path: cerebro init <path-to-components>`,
+    );
+  }
+
+  console.log(pc.cyan(`Detected components folder: ${detected}`));
+  return detected;
+}
 
 program.parse();

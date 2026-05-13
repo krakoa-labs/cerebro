@@ -33,13 +33,11 @@ export const CONVENTIONAL_COMPONENTS_PATHS = [
  *   matches.
  */
 export function detectComponentsPath(cwd: string): string | null {
-  for (const candidate of CONVENTIONAL_COMPONENTS_PATHS) {
-    const stat = statSync(resolve(cwd, candidate), { throwIfNoEntry: false });
-    if (stat?.isDirectory()) {
-      return candidate;
-    }
-  }
-  return null;
+  const match = CONVENTIONAL_COMPONENTS_PATHS.find((candidate) =>
+    statSync(resolve(cwd, candidate), { throwIfNoEntry: false })?.isDirectory(),
+  );
+
+  return match ?? null;
 }
 
 /**
@@ -76,10 +74,8 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
 
   const normalized = toPosixPath(rawRelative);
 
-  const warnings: string[] = [];
-  if (readdirSync(absoluteTarget).length === 0) {
-    warnings.push(`directory "${normalized}" is empty`);
-  }
+  const warnings =
+    readdirSync(absoluteTarget).length === 0 ? [`directory "${normalized}" is empty`] : [];
 
   const payload = `${JSON.stringify({ componentsPath: normalized }, null, 2)}\n`;
   try {

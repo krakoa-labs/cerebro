@@ -35,6 +35,7 @@ export function countTests(sourceText: string, filename: string): TestCounts {
     CallExpression(node) {
       const classification = classifyCallee(node.callee);
       if (classification === null) return;
+
       counts.total += 1;
       if (classification === "skipped") counts.skipped += 1;
       else if (classification === "only") counts.only += 1;
@@ -46,22 +47,49 @@ export function countTests(sourceText: string, filename: string): TestCounts {
   return counts;
 }
 
-type AstNode = { type: string; [key: string]: unknown };
+interface IdentifierNode {
+  type: "Identifier";
+  name: string;
+}
+
+interface MemberExpressionNode {
+  type: "MemberExpression";
+  object: unknown;
+  property: unknown;
+}
+
+function isIdentifier(node: unknown): node is IdentifierNode {
+  return (
+    typeof node === "object" &&
+    node !== null &&
+    (node as { type?: unknown }).type === "Identifier" &&
+    typeof (node as { name?: unknown }).name === "string"
+  );
+}
+
+function isMemberExpression(node: unknown): node is MemberExpressionNode {
+  return (
+    typeof node === "object" &&
+    node !== null &&
+    (node as { type?: unknown }).type === "MemberExpression"
+  );
+}
 
 function classifyCallee(callee: unknown): "test" | "skipped" | "only" | null {
-  let current = callee as AstNode | null;
-  const properties: string[] = [];
-  while (current !== null && current.type === "MemberExpression") {
-    const property = current.property as AstNode | undefined;
-    if (property !== undefined && property.type === "Identifier") {
-      properties.unshift((property as unknown as { name: string }).name);
-    }
-    current = current.object as AstNode | null;
-  }
-  if (current === null || current.type !== "Identifier") return null;
-  const name = (current as unknown as { name: string }).name;
-  if (!TEST_FNS.has(name)) return null;
+  const { root, properties } = collectMemberChain(callee);
+
+  if (!isIdentifier(root) || !TEST_FNS.has(root.name)) return null;
   if (properties.some((p) => SKIP_PROPS.has(p))) return "skipped";
   if (properties.includes(ONLY_PROP)) return "only";
+
   return "test";
+}
+
+function collectMemberChain(node: unknown): { root: unknown; properties: string[] } {
+  if (!isMemberExpression(node)) return { root: node, properties: [] };
+
+  const inner = collectMemberChain(node.object);
+  const ownProp = isIdentifier(node.property) ? [node.property.name] : [];
+
+  return { root: inner.root, properties: [...inner.properties, ...ownProp] };
 }

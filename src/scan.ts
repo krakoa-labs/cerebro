@@ -22,6 +22,8 @@ export interface ScanResult {
 
 const BARREL_BASENAMES = ["index.ts", "index.tsx"];
 const SOURCE_RESOLUTION_EXTS = [".tsx", ".ts"];
+const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
+const ZERO_TESTS: TestCounts = { total: 0, skipped: 0, only: 0 };
 
 /**
  * Reads the project config and scans the design system's components root,
@@ -37,22 +39,25 @@ const SOURCE_RESOLUTION_EXTS = [".tsx", ".ts"];
  */
 export function scan({ cwd }: ScanOptions): ScanResult {
   const configPath = resolve(cwd, CONFIG_FILENAME);
-  let configText: string;
-  try {
-    configText = readFileSync(configPath, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(`No ${CONFIG_FILENAME} found. Run "cerebro init" first.`);
-    }
-    throw err;
-  }
 
-  let rawConfig: unknown;
-  try {
-    rawConfig = JSON.parse(configText);
-  } catch (err) {
-    throw new Error(`Failed to parse ${CONFIG_FILENAME}: ${(err as Error).message}`);
-  }
+  const configText = ((): string => {
+    try {
+      return readFileSync(configPath, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`No ${CONFIG_FILENAME} found. Run "cerebro init" first.`);
+      }
+      throw err;
+    }
+  })();
+
+  const rawConfig = ((): unknown => {
+    try {
+      return JSON.parse(configText);
+    } catch (err) {
+      throw new Error(`Failed to parse ${CONFIG_FILENAME}: ${(err as Error).message}`);
+    }
+  })();
 
   if (
     typeof rawConfig !== "object" ||
@@ -69,14 +74,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     throw new Error(`componentsPath "${componentsPathRel}" does not exist or is not a directory.`);
   }
 
-  let barrelPath: string | null = null;
-  for (const name of BARREL_BASENAMES) {
-    const candidate = join(componentsRoot, name);
-    if (existsSync(candidate)) {
-      barrelPath = candidate;
-      break;
-    }
-  }
+  const barrelPath = findExistingFile(BARREL_BASENAMES.map((name) => join(componentsRoot, name)));
   if (barrelPath === null) {
     throw new Error(
       `No barrel file found at "${componentsPathRel}/index.ts" or "${componentsPathRel}/index.tsx".`,
@@ -86,39 +84,35 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   const sourceText = readFileSync(barrelPath, "utf8");
   const parsed = parseBarrel(sourceText, barrelPath);
 
-  const warnings: string[] = [];
-  for (const w of parsed.warnings) {
-    if (w.code === "wildcard-export") {
-      warnings.push(`skipped wildcard export "${w.detail}" (not supported in v1)`);
-    } else if (w.code === "default-export") {
-      warnings.push("skipped default export of the barrel (not supported in v1)");
-    }
-  }
+  const parseWarnings = parsed.warnings.map((w) =>
+    w.code === "wildcard-export"
+      ? `skipped wildcard export "${w.detail}" (not supported in v1)`
+      : "skipped default export of the barrel (not supported in v1)",
+  );
 
   const barrelDir = dirname(barrelPath);
-  const components: ScannedComponent[] = [];
+  const warnings: string[] = [...parseWarnings];
 
-  for (const exp of parsed.exports) {
-    let absolutePath: string;
+  const components = parsed.exports.flatMap((exp): ScannedComponent[] => {
     const isBarrelLocal = exp.source === null;
-    if (isBarrelLocal) {
-      absolutePath = barrelPath;
-    } else {
-      const resolved = resolveSourcePath(barrelDir, exp.source as string, exp.importedName);
-      if (resolved === null) {
-        warnings.push(`skipped export "${exp.name}": could not resolve "${exp.source}"`);
-        continue;
-      }
-      absolutePath = resolved;
-    }
-    const rel = toPosixPath(relative(cwd, absolutePath));
-    const tests = isBarrelLocal
-      ? { total: 0, skipped: 0, only: 0 }
-      : countTestsForComponent(absolutePath, warnings, cwd);
-    components.push({ name: exp.name, path: rel, tests });
-  }
+    const absolutePath = isBarrelLocal
+      ? barrelPath
+      : resolveSourcePath(barrelDir, exp.source as string, exp.importedName);
 
-  components.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    if (absolutePath === null) {
+      warnings.push(`skipped export "${exp.name}": could not resolve "${exp.source}"`);
+      return [];
+    }
+
+    const rel = toPosixPath(relative(cwd, absolutePath));
+    const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
+
+    return [{ name: exp.name, path: rel, tests }];
+  });
+
+  const sortedComponents = components.toSorted((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  );
 
   // Only flag the barrel as silent when it has neither named exports nor any
   // unsupported shapes — wildcard/default warnings already explain emptiness.
@@ -127,7 +121,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     warnings.push(`barrel "${barrelRel}" has no named exports`);
   }
 
-  return { components, warnings };
+  return { components: sortedComponents, warnings };
 }
 
 function resolveSourcePath(
@@ -166,19 +160,15 @@ function resolveSourcePath(
 }
 
 function findExistingFile(candidates: string[]): string | null {
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
-
-const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
 
 function testFileCandidates(componentSource: string): string[] {
   const dir = dirname(componentSource);
   const base = basename(componentSource, extname(componentSource));
   const colocated = TEST_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
   const subfolder = TEST_SUFFIXES.map((suffix) => join(dir, "__tests__", `${base}${suffix}`));
+
   return [...colocated, ...subfolder];
 }
 
@@ -187,27 +177,33 @@ function countTestsForComponent(
   warnings: string[],
   cwd: string,
 ): TestCounts {
-  const aggregate: TestCounts = { total: 0, skipped: 0, only: 0 };
-  for (const candidate of testFileCandidates(componentSource)) {
-    if (!existsSync(candidate)) continue;
-    let text: string;
-    try {
-      text = readFileSync(candidate, "utf8");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
-      const rel = toPosixPath(relative(cwd, candidate));
-      warnings.push(`failed to read test file "${rel}": ${(err as Error).message}`);
-      continue;
-    }
+  return testFileCandidates(componentSource).reduce<TestCounts>((acc, candidate) => {
+    if (!existsSync(candidate)) return acc;
+
+    const text = ((): string | null => {
+      try {
+        return readFileSync(candidate, "utf8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        const rel = toPosixPath(relative(cwd, candidate));
+        warnings.push(`failed to read test file "${rel}": ${(err as Error).message}`);
+        return null;
+      }
+    })();
+
+    if (text === null) return acc;
+
     try {
       const counts = countTests(text, candidate);
-      aggregate.total += counts.total;
-      aggregate.skipped += counts.skipped;
-      aggregate.only += counts.only;
+      return {
+        total: acc.total + counts.total,
+        skipped: acc.skipped + counts.skipped,
+        only: acc.only + counts.only,
+      };
     } catch (err) {
       const rel = toPosixPath(relative(cwd, candidate));
       warnings.push(`failed to parse test file "${rel}": ${(err as Error).message}`);
+      return acc;
     }
-  }
-  return aggregate;
+  }, ZERO_TESTS);
 }
