@@ -14,6 +14,33 @@ export interface InitResult {
 
 export const CONFIG_FILENAME = "cerebro.config.json";
 
+export const CONVENTIONAL_COMPONENTS_PATHS = [
+  "src/components",
+  "src/lib/components",
+  "lib/components",
+  "components",
+  "app/components",
+];
+
+/**
+ * Detects the components folder of a design system by checking a fixed list of
+ * conventional paths under `cwd`, in priority order. The first existing
+ * directory wins.
+ *
+ * @param cwd - The project root directory to scan.
+ * @returns The matching path relative to `cwd`, or `null` if no convention
+ *   matches.
+ */
+export function detectComponentsPath(cwd: string): string | null {
+  for (const candidate of CONVENTIONAL_COMPONENTS_PATHS) {
+    const stat = statSync(resolve(cwd, candidate), { throwIfNoEntry: false });
+    if (stat?.isDirectory()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 /**
  * Initializes Cerebro in a design system by writing the components path to a
  * project config file at the root of `cwd`.

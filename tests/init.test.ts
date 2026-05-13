@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CONFIG_FILENAME, init } from "../src/init.js";
+import { CONFIG_FILENAME, detectComponentsPath, init } from "../src/init.js";
 
 describe("init", () => {
   let cwd: string;
@@ -76,5 +76,42 @@ describe("init", () => {
 
     expect(() => init({ cwd, componentsPath: "src/components" })).toThrow(/already exists/);
     expect(readFileSync(join(cwd, CONFIG_FILENAME), "utf8")).toBe(existing);
+  });
+});
+
+describe("detectComponentsPath", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-detect-"));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("returns null when no conventional path exists", () => {
+    expect(detectComponentsPath(cwd)).toBeNull();
+  });
+
+  it("returns src/components when it exists", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    expect(detectComponentsPath(cwd)).toBe("src/components");
+  });
+
+  it("prefers src/components over components when both exist", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    mkdirSync(join(cwd, "components"));
+    expect(detectComponentsPath(cwd)).toBe("src/components");
+  });
+
+  it("falls through to a later convention when earlier ones do not exist", () => {
+    mkdirSync(join(cwd, "components"));
+    expect(detectComponentsPath(cwd)).toBe("components");
+  });
+
+  it("ignores files matching a convention name", () => {
+    writeFileSync(join(cwd, "components"), "");
+    expect(detectComponentsPath(cwd)).toBeNull();
   });
 });
