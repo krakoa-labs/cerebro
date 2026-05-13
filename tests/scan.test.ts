@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,7 +42,20 @@ describe("scan", () => {
 
   it("throws when the config is missing componentsPath", () => {
     writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify({}));
-    expect(() => scan({ cwd })).toThrow(/missing a valid "componentsPath"/);
+    expect(() => scan({ cwd })).toThrow(/missing the "componentsPath" field/);
+  });
+
+  it.each([
+    ["a JSON array", "[]"],
+    ["JSON null", "null"],
+  ])("rejects %s as the config root", (_label, content) => {
+    writeFileSync(join(cwd, CONFIG_FILENAME), content);
+    expect(() => scan({ cwd })).toThrow(/must contain a JSON object/);
+  });
+
+  it("throws when componentsPath is not a string", () => {
+    writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify({ componentsPath: 42 }));
+    expect(() => scan({ cwd })).toThrow(/expected string, got number/);
   });
 
   it("throws when componentsPath does not exist", () => {
@@ -54,6 +67,19 @@ describe("scan", () => {
     writeConfig(cwd, "src/components");
     mkdirSync(join(cwd, "src", "components"), { recursive: true });
     expect(() => scan({ cwd })).toThrow(/No barrel file found/);
+  });
+
+  it("throws when componentsPath resolves outside the project root via symlink", () => {
+    writeConfig(cwd, "src/components");
+    mkdirSync(join(cwd, "src"));
+
+    const outsideTarget = mkdtempSync(join(tmpdir(), "cerebro-outside-"));
+    try {
+      symlinkSync(outsideTarget, join(cwd, "src", "components"), "dir");
+      expect(() => scan({ cwd })).toThrow(/resolves outside the project root via symlink/);
+    } finally {
+      rmSync(outsideTarget, { recursive: true, force: true });
+    }
   });
 
   it("returns components sorted alphabetically, with local exports pointing at the barrel", () => {

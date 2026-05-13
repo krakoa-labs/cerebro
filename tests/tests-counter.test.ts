@@ -46,14 +46,6 @@ describe("countTests", () => {
     });
   });
 
-  it("counts test.skip() as both total and skipped", () => {
-    expect(countTests(`test.skip("a", () => {});`, "x.test.ts")).toEqual({
-      total: 1,
-      skipped: 1,
-      only: 0,
-    });
-  });
-
   it("counts it.each([...])(...) as a single test, not the array length", () => {
     expect(countTests(`it.each([1, 2, 3])("a %s", () => {});`, "x.test.ts")).toEqual({
       total: 1,

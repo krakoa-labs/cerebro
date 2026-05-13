@@ -81,8 +81,15 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
   try {
     writeFileSync(configPath, payload, { encoding: "utf8", flag: "wx" });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EEXIST") {
       throw new Error(`${CONFIG_FILENAME} already exists. Delete it to re-init.`);
+    }
+    if (code === "EACCES" || code === "EPERM") {
+      throw new Error(`permission denied writing ${CONFIG_FILENAME} in "${cwd}".`);
+    }
+    if (code === "ENOSPC") {
+      throw new Error(`no space left on device when writing ${CONFIG_FILENAME}.`);
     }
     throw err;
   }

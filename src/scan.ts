@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseBarrel } from "./barrel.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
@@ -59,19 +59,20 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     }
   })();
 
-  if (
-    typeof rawConfig !== "object" ||
-    rawConfig === null ||
-    typeof (rawConfig as { componentsPath?: unknown }).componentsPath !== "string"
-  ) {
-    throw new Error(`${CONFIG_FILENAME} is missing a valid "componentsPath" field.`);
-  }
-  const componentsPathRel = (rawConfig as { componentsPath: string }).componentsPath;
+  const { componentsPath: componentsPathRel } = validateConfig(rawConfig);
 
   const componentsRoot = resolve(cwd, componentsPathRel);
   const rootStat = statSync(componentsRoot, { throwIfNoEntry: false });
   if (!rootStat || !rootStat.isDirectory()) {
     throw new Error(`componentsPath "${componentsPathRel}" does not exist or is not a directory.`);
+  }
+
+  const realRoot = realpathSync(componentsRoot);
+  const realCwd = realpathSync(cwd);
+  if (realRoot !== realCwd && !realRoot.startsWith(realCwd + sep)) {
+    throw new Error(
+      `componentsPath "${componentsPathRel}" resolves outside the project root via symlink.`,
+    );
   }
 
   const barrelPath = findExistingFile(BARREL_BASENAMES.map((name) => join(componentsRoot, name)));
@@ -82,7 +83,8 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   }
 
   const sourceText = readFileSync(barrelPath, "utf8");
-  const parsed = parseBarrel(sourceText, barrelPath);
+  const barrelRel = toPosixPath(relative(cwd, barrelPath));
+  const parsed = parseBarrel(sourceText, barrelRel);
 
   const parseWarnings = parsed.warnings.map((w) =>
     w.code === "wildcard-export"
@@ -117,11 +119,28 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   // Only flag the barrel as silent when it has neither named exports nor any
   // unsupported shapes — wildcard/default warnings already explain emptiness.
   if (parsed.exports.length === 0 && parsed.warnings.length === 0) {
-    const barrelRel = toPosixPath(relative(cwd, barrelPath));
     warnings.push(`barrel "${barrelRel}" has no named exports`);
   }
 
   return { components: sortedComponents, warnings };
+}
+
+function validateConfig(raw: unknown): { componentsPath: string } {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error(`${CONFIG_FILENAME} must contain a JSON object.`);
+  }
+
+  const cp = (raw as { componentsPath?: unknown }).componentsPath;
+  if (cp === undefined) {
+    throw new Error(`${CONFIG_FILENAME} is missing the "componentsPath" field.`);
+  }
+  if (typeof cp !== "string") {
+    throw new Error(
+      `${CONFIG_FILENAME} has an invalid "componentsPath" field: expected string, got ${typeof cp}.`,
+    );
+  }
+
+  return { componentsPath: cp };
 }
 
 function resolveSourcePath(

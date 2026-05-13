@@ -16,10 +16,7 @@ program.name("cerebro").description("Locate every component across your apps.").
 program
   .command("init")
   .description("Initialize Cerebro in this design system.")
-  .argument(
-    "[path-to-components]",
-    "Path to the directory containing components (auto-detected if omitted)",
-  )
+  .argument("[path-to-components]", "Path to the components root (auto-detected if omitted)")
   .action((pathArg: string | undefined) => {
     try {
       const cwd = process.cwd();
@@ -80,11 +77,11 @@ function resolveComponentsPath(pathArg: string | undefined, cwd: string): string
   const detected = detectComponentsPath(cwd);
   if (detected === null) {
     throw new Error(
-      `Could not detect a components folder.\nTried: ${CONVENTIONAL_COMPONENTS_PATHS.join(", ")}\nProvide an explicit path: cerebro init <path-to-components>`,
+      `Could not detect a components root.\nTried: ${CONVENTIONAL_COMPONENTS_PATHS.join(", ")}\nProvide an explicit path: cerebro init <path-to-components>`,
     );
   }
 
-  console.log(pc.cyan(`Detected components folder: ${detected}`));
+  console.log(pc.cyan(`Detected components root: ${detected}`));
   return detected;
 }
 
