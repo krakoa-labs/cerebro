@@ -104,7 +104,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     if (isBarrelLocal) {
       absolutePath = barrelPath;
     } else {
-      const resolved = resolveSourcePath(barrelDir, exp.source as string);
+      const resolved = resolveSourcePath(barrelDir, exp.source as string, exp.importedName);
       if (resolved === null) {
         warnings.push(`skipped export "${exp.name}": could not resolve "${exp.source}"`);
         continue;
@@ -130,24 +130,43 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   return { components, warnings };
 }
 
-function resolveSourcePath(barrelDir: string, specifier: string): string | null {
+function resolveSourcePath(
+  barrelDir: string,
+  specifier: string,
+  importedName: string | null,
+): string | null {
   if (!specifier.startsWith(".")) return null;
   const base = isAbsolute(specifier) ? specifier : resolve(barrelDir, specifier);
 
-  for (const ext of SOURCE_RESOLUTION_EXTS) {
-    const candidate = `${base}${ext}`;
-    if (existsSync(candidate)) return candidate;
+  const directFile = findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => `${base}${ext}`));
+  if (directFile !== null) return directFile;
+
+  if (!statSync(base, { throwIfNoEntry: false })?.isDirectory()) return null;
+
+  // When the folder holds several sibling files (e.g. FancySelect/ contains both
+  // FancySelect.tsx and FancyAsyncSelect.tsx), the imported name disambiguates
+  // which file is the source of THIS export.
+  if (importedName !== null) {
+    const named = findExistingFile(
+      SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `${importedName}${ext}`)),
+    );
+    if (named !== null) return named;
   }
+
   // Prefer `X/X.tsx` over `X/index.tsx`: the folder-named file is the canonical
   // Component source in most React DS conventions; `index.ts` is usually an
   // inner barrel that just re-exports it.
   const folderName = basename(base);
-  for (const ext of SOURCE_RESOLUTION_EXTS) {
-    const candidate = join(base, `${folderName}${ext}`);
-    if (existsSync(candidate)) return candidate;
-  }
-  for (const ext of SOURCE_RESOLUTION_EXTS) {
-    const candidate = join(base, `index${ext}`);
+  const folderNamed = findExistingFile(
+    SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `${folderName}${ext}`)),
+  );
+  if (folderNamed !== null) return folderNamed;
+
+  return findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `index${ext}`)));
+}
+
+function findExistingFile(candidates: string[]): string | null {
+  for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
   return null;

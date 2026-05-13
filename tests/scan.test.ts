@@ -145,6 +145,31 @@ describe("scan", () => {
     expect(result.components[0]?.path).toBe("src/components/Card/Card.tsx");
   });
 
+  it("uses the imported name to disambiguate sibling files in the same folder", () => {
+    writeConfig(cwd, "src/components");
+    writeBarrel(
+      cwd,
+      "src/components",
+      [
+        `import { FancySelect, FancyAsyncSelect } from "./FancySelect";`,
+        "export { FancySelect, FancyAsyncSelect };",
+      ].join("\n"),
+    );
+    mkdirSync(join(cwd, "src", "components", "FancySelect"));
+    writeFileSync(join(cwd, "src", "components", "FancySelect", "FancySelect.tsx"), "");
+    writeFileSync(join(cwd, "src", "components", "FancySelect", "FancyAsyncSelect.tsx"), "");
+    writeFileSync(join(cwd, "src", "components", "FancySelect", "index.ts"), "");
+
+    const result = scan({ cwd });
+
+    expect(result.components.find((c) => c.name === "FancySelect")?.path).toBe(
+      "src/components/FancySelect/FancySelect.tsx",
+    );
+    expect(result.components.find((c) => c.name === "FancyAsyncSelect")?.path).toBe(
+      "src/components/FancySelect/FancyAsyncSelect.tsx",
+    );
+  });
+
   it("prefers .tsx over .ts during resolution", () => {
     writeConfig(cwd, "src/components");
     writeBarrel(cwd, "src/components", `export { Card } from "./Card";`);

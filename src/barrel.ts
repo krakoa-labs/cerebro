@@ -10,6 +10,7 @@ export interface BarrelWarning {
 export interface ParsedExport {
   name: string;
   source: string | null;
+  importedName: string | null;
 }
 
 export interface ParsedBarrel {
@@ -57,7 +58,14 @@ export function parseBarrel(sourceText: string, filename: string): ParsedBarrel 
       const name = entry.exportName.name;
       if (name === null) continue;
       const source = entry.moduleRequest?.value ?? null;
-      exports.push({ name, source });
+      let importedName: string | null = null;
+      if (source !== null && entry.importName.kind === "Name") {
+        const imp = entry.importName.name;
+        if (imp !== null && imp !== "default") {
+          importedName = imp;
+        }
+      }
+      exports.push({ name, source, importedName });
     }
   }
 
