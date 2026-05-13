@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseBarrel } from "./barrel.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
+import { type TestCounts, countTests } from "./tests-counter.js";
 
 export interface ScanOptions {
   cwd: string;
@@ -11,6 +12,7 @@ export interface ScanOptions {
 export interface ScannedComponent {
   name: string;
   path: string;
+  tests: TestCounts;
 }
 
 export interface ScanResult {
@@ -98,10 +100,11 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 
   for (const exp of parsed.exports) {
     let absolutePath: string;
-    if (exp.source === null) {
+    const isBarrelLocal = exp.source === null;
+    if (isBarrelLocal) {
       absolutePath = barrelPath;
     } else {
-      const resolved = resolveSourcePath(barrelDir, exp.source);
+      const resolved = resolveSourcePath(barrelDir, exp.source as string);
       if (resolved === null) {
         warnings.push(`skipped export "${exp.name}": could not resolve "${exp.source}"`);
         continue;
@@ -109,7 +112,10 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       absolutePath = resolved;
     }
     const rel = toPosixPath(relative(cwd, absolutePath));
-    components.push({ name: exp.name, path: rel });
+    const tests = isBarrelLocal
+      ? { total: 0, skipped: 0, only: 0 }
+      : countTestsForComponent(absolutePath, warnings, cwd);
+    components.push({ name: exp.name, path: rel, tests });
   }
 
   components.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -132,9 +138,57 @@ function resolveSourcePath(barrelDir: string, specifier: string): string | null 
     const candidate = `${base}${ext}`;
     if (existsSync(candidate)) return candidate;
   }
+  // Prefer `X/X.tsx` over `X/index.tsx`: the folder-named file is the canonical
+  // Component source in most React DS conventions; `index.ts` is usually an
+  // inner barrel that just re-exports it.
+  const folderName = basename(base);
+  for (const ext of SOURCE_RESOLUTION_EXTS) {
+    const candidate = join(base, `${folderName}${ext}`);
+    if (existsSync(candidate)) return candidate;
+  }
   for (const ext of SOURCE_RESOLUTION_EXTS) {
     const candidate = join(base, `index${ext}`);
     if (existsSync(candidate)) return candidate;
   }
   return null;
+}
+
+const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
+
+function testFileCandidates(componentSource: string): string[] {
+  const dir = dirname(componentSource);
+  const base = basename(componentSource, extname(componentSource));
+  const colocated = TEST_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
+  const subfolder = TEST_SUFFIXES.map((suffix) => join(dir, "__tests__", `${base}${suffix}`));
+  return [...colocated, ...subfolder];
+}
+
+function countTestsForComponent(
+  componentSource: string,
+  warnings: string[],
+  cwd: string,
+): TestCounts {
+  const aggregate: TestCounts = { total: 0, skipped: 0, only: 0 };
+  for (const candidate of testFileCandidates(componentSource)) {
+    if (!existsSync(candidate)) continue;
+    let text: string;
+    try {
+      text = readFileSync(candidate, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      const rel = toPosixPath(relative(cwd, candidate));
+      warnings.push(`failed to read test file "${rel}": ${(err as Error).message}`);
+      continue;
+    }
+    try {
+      const counts = countTests(text, candidate);
+      aggregate.total += counts.total;
+      aggregate.skipped += counts.skipped;
+      aggregate.only += counts.only;
+    } catch (err) {
+      const rel = toPosixPath(relative(cwd, candidate));
+      warnings.push(`failed to parse test file "${rel}": ${(err as Error).message}`);
+    }
+  }
+  return aggregate;
 }

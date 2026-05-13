@@ -58,8 +58,22 @@ program
       for (const warning of result.warnings) {
         console.warn(pc.yellow(`Warning: ${warning}`));
       }
-      const count = result.components.length;
-      process.stderr.write(pc.dim(`${count} ${count === 1 ? "Component" : "Components"} found.\n`));
+      const componentCount = result.components.length;
+      const totals = result.components.reduce(
+        (acc, c) => ({
+          total: acc.total + c.tests.total,
+          skipped: acc.skipped + c.tests.skipped,
+          only: acc.only + c.tests.only,
+        }),
+        { total: 0, skipped: 0, only: 0 },
+      );
+      const componentNoun = componentCount === 1 ? "Component" : "Components";
+      const testNoun = totals.total === 1 ? "test" : "tests";
+      process.stderr.write(
+        pc.dim(
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).\n`,
+        ),
+      );
       console.log(JSON.stringify(result.components, null, 2));
     } catch (err) {
       console.error(pc.red(`Error: ${(err as Error).message}`));
