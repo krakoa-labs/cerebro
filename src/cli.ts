@@ -7,6 +7,7 @@ import {
   detectComponentsPath,
   init,
 } from "./init.js";
+import { scan } from "./scan.js";
 
 const program = new Command();
 
@@ -42,6 +43,24 @@ program
       console.log(
         pc.green(`Created ${CONFIG_FILENAME} (componentsPath: ${result.componentsPath})`),
       );
+    } catch (err) {
+      console.error(pc.red(`Error: ${(err as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command("scan")
+  .description("Scan the design system and list its public Components.")
+  .action(() => {
+    try {
+      const result = scan({ cwd: process.cwd() });
+      for (const warning of result.warnings) {
+        console.warn(pc.yellow(`Warning: ${warning}`));
+      }
+      const count = result.components.length;
+      process.stderr.write(pc.dim(`${count} ${count === 1 ? "Component" : "Components"} found.\n`));
+      console.log(JSON.stringify(result.components, null, 2));
     } catch (err) {
       console.error(pc.red(`Error: ${(err as Error).message}`));
       process.exit(1);

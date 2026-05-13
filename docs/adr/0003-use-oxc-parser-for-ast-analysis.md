@@ -1,0 +1,5 @@
+# Use oxc-parser for AST analysis
+
+We considered three parsers for analyzing TypeScript and TSX source files of a design system: `typescript` (the official compiler API, ~85 MB install, full TS semantic analysis), `oxc-parser` (Rust-backed, ~5 MB, full AST but no type checker), and `es-module-lexer` (~50 KB, exports/imports only). We chose `oxc-parser` because it is the smallest option that still exposes a full AST, which Cerebro will need for the upcoming non-exports indicators (JSX detection, hook usage, prop names, cross-file resolution). The official TypeScript compiler is heavier than warranted by present indicators and slows down the cold-start of `cerebro scan`; `es-module-lexer` would cover the v1 export-listing case alone but would force a parser switch the moment any structural AST analysis is required.
+
+Accepted consequence: if a future indicator depends on TypeScript *type* information (e.g. inferred prop types), `typescript` will need to be added alongside `oxc-parser` as a second parser running in parallel for that subset of features.

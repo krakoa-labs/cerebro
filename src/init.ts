@@ -1,5 +1,6 @@
 import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import { toPosixPath } from "./paths.js";
 
 export interface InitOptions {
   cwd: string;
@@ -73,7 +74,7 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
     throw new Error(`path "${componentsPath}" must be inside the project root`);
   }
 
-  const normalized = rawRelative.split(/[\\/]/).join("/");
+  const normalized = toPosixPath(rawRelative);
 
   const warnings: string[] = [];
   if (readdirSync(absoluteTarget).length === 0) {
