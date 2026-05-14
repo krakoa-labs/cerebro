@@ -53,15 +53,19 @@ program
           total: acc.total + c.tests.total,
           skipped: acc.skipped + c.tests.skipped,
           only: acc.only + c.tests.only,
+          stories: acc.stories + (c.stories ?? 0),
+          hasStories: acc.hasStories || c.stories !== undefined,
         }),
-        { total: 0, skipped: 0, only: 0 },
+        { total: 0, skipped: 0, only: 0, stories: 0, hasStories: false },
       );
 
       const componentNoun = componentCount === 1 ? "Component" : "Components";
       const testNoun = totals.total === 1 ? "test" : "tests";
+      const storyNoun = totals.stories === 1 ? "story" : "stories";
+      const storiesFragment = totals.hasStories ? ` ${totals.stories} ${storyNoun}.` : "";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}\n`,
         ),
       );
 

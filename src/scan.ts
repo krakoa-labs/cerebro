@@ -3,6 +3,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { parseBarrel } from "./barrel.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
+import { countStories } from "./stories-counter.js";
 import { type TestCounts, countTests } from "./tests-counter.js";
 
 export interface ScanOptions {
@@ -13,6 +14,7 @@ export interface ScannedComponent {
   name: string;
   path: string;
   tests: TestCounts;
+  stories?: number;
 }
 
 export interface ScanResult {
@@ -23,6 +25,7 @@ export interface ScanResult {
 const BARREL_BASENAMES = ["index.ts", "index.tsx"];
 const SOURCE_RESOLUTION_EXTS = [".tsx", ".ts"];
 const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
+const STORY_SUFFIXES = [".stories.tsx", ".stories.ts"];
 const ZERO_TESTS: TestCounts = { total: 0, skipped: 0, only: 0 };
 
 /**
@@ -59,7 +62,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     }
   })();
 
-  const { componentsPath: componentsPathRel } = validateConfig(rawConfig);
+  const { componentsPath: componentsPathRel, usesStorybook } = validateConfig(rawConfig);
 
   const componentsRoot = resolve(cwd, componentsPathRel);
   const rootStat = statSync(componentsRoot, { throwIfNoEntry: false });
@@ -109,7 +112,11 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const rel = toPosixPath(relative(cwd, absolutePath));
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
 
-    return [{ name: exp.name, path: rel, tests }];
+    if (!usesStorybook) return [{ name: exp.name, path: rel, tests }];
+
+    const stories = isBarrelLocal ? 0 : countStoriesForComponent(absolutePath, warnings, cwd);
+
+    return [{ name: exp.name, path: rel, tests, stories }];
   });
 
   const sortedComponents = components.toSorted((a, b) =>
@@ -125,7 +132,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   return { components: sortedComponents, warnings };
 }
 
-function validateConfig(raw: unknown): { componentsPath: string } {
+function validateConfig(raw: unknown): { componentsPath: string; usesStorybook: boolean } {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`${CONFIG_FILENAME} must contain a JSON object.`);
   }
@@ -140,7 +147,14 @@ function validateConfig(raw: unknown): { componentsPath: string } {
     );
   }
 
-  return { componentsPath: cp };
+  const usb = (raw as { usesStorybook?: unknown }).usesStorybook;
+  if (usb !== undefined && typeof usb !== "boolean") {
+    throw new Error(
+      `${CONFIG_FILENAME} has an invalid "usesStorybook" field: expected boolean, got ${typeof usb}.`,
+    );
+  }
+
+  return { componentsPath: cp, usesStorybook: usb === true };
 }
 
 function resolveSourcePath(
@@ -189,6 +203,44 @@ function testFileCandidates(componentSource: string): string[] {
   const subfolder = TEST_SUFFIXES.map((suffix) => join(dir, "__tests__", `${base}${suffix}`));
 
   return [...colocated, ...subfolder];
+}
+
+function storyFileCandidates(componentSource: string): string[] {
+  const dir = dirname(componentSource);
+  const base = basename(componentSource, extname(componentSource));
+
+  return STORY_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
+}
+
+function countStoriesForComponent(
+  componentSource: string,
+  warnings: string[],
+  cwd: string,
+): number {
+  return storyFileCandidates(componentSource).reduce<number>((acc, candidate) => {
+    if (!existsSync(candidate)) return acc;
+
+    const text = ((): string | null => {
+      try {
+        return readFileSync(candidate, "utf8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        const rel = toPosixPath(relative(cwd, candidate));
+        warnings.push(`failed to read stories file "${rel}": ${(err as Error).message}`);
+        return null;
+      }
+    })();
+
+    if (text === null) return acc;
+
+    try {
+      return acc + countStories(text, candidate);
+    } catch (err) {
+      const rel = toPosixPath(relative(cwd, candidate));
+      warnings.push(`failed to parse stories file "${rel}": ${(err as Error).message}`);
+      return acc;
+    }
+  }, 0);
 }
 
 function countTestsForComponent(

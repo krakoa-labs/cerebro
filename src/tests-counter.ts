@@ -1,4 +1,5 @@
-import { Visitor, parseSync } from "oxc-parser";
+import { Visitor } from "oxc-parser";
+import { parseSource } from "./parse-source.js";
 
 export interface TestCounts {
   total: number;
@@ -21,13 +22,7 @@ const ONLY_PROP = "only";
  * @throws If `oxc-parser` reports a fatal parse error on the source.
  */
 export function countTests(sourceText: string, filename: string): TestCounts {
-  const lang = filename.endsWith(".tsx") ? "tsx" : "ts";
-  const result = parseSync(filename, sourceText, { sourceType: "module", lang });
-
-  const fatalErrors = result.errors.filter((e) => e.severity === "Error");
-  if (fatalErrors.length > 0) {
-    throw new Error(`Failed to parse ${filename}: ${fatalErrors[0]?.message ?? "unknown error"}`);
-  }
+  const result = parseSource(sourceText, filename);
 
   const counts: TestCounts = { total: 0, skipped: 0, only: 0 };
 

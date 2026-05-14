@@ -1,3 +1,4 @@
 {
-  "componentsPath": "src/components"
+  "componentsPath": "src/components",
+  "usesStorybook": false
 }

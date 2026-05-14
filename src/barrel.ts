@@ -1,4 +1,4 @@
-import { parseSync } from "oxc-parser";
+import { type ParsedSource, parseSource } from "./parse-source.js";
 
 export type BarrelWarningCode = "wildcard-export" | "default-export";
 
@@ -18,9 +18,7 @@ export interface ParsedBarrel {
   warnings: BarrelWarning[];
 }
 
-type StaticExportEntry = ReturnType<
-  typeof parseSync
->["module"]["staticExports"][number]["entries"][number];
+type StaticExportEntry = ParsedSource["module"]["staticExports"][number]["entries"][number];
 
 /**
  * Parses a barrel file and extracts its explicit named exports along with
@@ -34,13 +32,7 @@ type StaticExportEntry = ReturnType<
  * @throws If `oxc-parser` reports a fatal parse error on the source.
  */
 export function parseBarrel(sourceText: string, filename: string): ParsedBarrel {
-  const lang = filename.endsWith(".tsx") ? "tsx" : "ts";
-  const result = parseSync(filename, sourceText, { sourceType: "module", lang });
-
-  const fatalErrors = result.errors.filter((e) => e.severity === "Error");
-  if (fatalErrors.length > 0) {
-    throw new Error(`Failed to parse ${filename}: ${fatalErrors[0]?.message ?? "unknown error"}`);
-  }
+  const result = parseSource(sourceText, filename);
 
   const entries = result.module.staticExports.flatMap((stmt) => stmt.entries);
 

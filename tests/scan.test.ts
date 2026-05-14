@@ -11,8 +11,8 @@ const FIXTURE_BARREL_BASICS = join(REPO_ROOT, "fixtures", "barrel-basics");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 
-function writeConfig(cwd: string, componentsPath: string): void {
-  writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify({ componentsPath }));
+function writeConfig(cwd: string, componentsPath: string, usesStorybook = false): void {
+  writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify({ componentsPath, usesStorybook }));
 }
 
 function writeBarrel(cwd: string, componentsRel: string, contents: string): void {
@@ -56,6 +56,30 @@ describe("scan", () => {
   it("throws when componentsPath is not a string", () => {
     writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify({ componentsPath: 42 }));
     expect(() => scan({ cwd })).toThrow(/expected string, got number/);
+  });
+
+  it("throws when usesStorybook is present but not a boolean", () => {
+    writeFileSync(
+      join(cwd, CONFIG_FILENAME),
+      JSON.stringify({ componentsPath: "src/components", usesStorybook: "yes" }),
+    );
+    expect(() => scan({ cwd })).toThrow(
+      /invalid "usesStorybook" field: expected boolean, got string/,
+    );
+  });
+
+  it("treats a config without usesStorybook as if it were false", () => {
+    writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify({ componentsPath: "src/components" }));
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Button.stories.tsx"),
+      "export default {}; export const Primary = {};",
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.stories).toBeUndefined();
   });
 
   it("throws when componentsPath does not exist", () => {
@@ -309,6 +333,98 @@ describe("scan test counting", () => {
     expect(result.components[0]?.name).toBe("Broken");
     expect(result.components[0]?.tests).toEqual(ZERO_TESTS);
     expect(result.warnings.some((w) => w.includes("failed to parse test file"))).toBe(true);
+  });
+});
+
+describe("scan story counting", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-stories-"));
+    writeConfig(cwd, "src/components", true);
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("counts named exports of a co-located .stories.tsx file", () => {
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Button.stories.tsx"),
+      `export default {};
+       export const Primary = {};
+       export const Secondary = {};`,
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.stories).toBe(2);
+  });
+
+  it("counts a co-located .stories.ts file as well", () => {
+    writeBarrel(cwd, "src/components", `export { Token } from "./Token";`);
+    writeFileSync(join(cwd, "src", "components", "Token.ts"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Token.stories.ts"),
+      "export default {}; export const Default = {};",
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.stories).toBe(1);
+  });
+
+  it("returns zero stories when no stories file exists for the Component", () => {
+    writeBarrel(cwd, "src/components", `export { Lone } from "./Lone";`);
+    writeFileSync(join(cwd, "src", "components", "Lone.tsx"), "");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.stories).toBe(0);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("skips story lookup for Components declared locally in the barrel", () => {
+    writeBarrel(cwd, "src/components", `export const Inline = "x";`);
+    writeFileSync(
+      join(cwd, "src", "components", "index.stories.ts"),
+      "export default {}; export const Should = {}; export const NotCount = {};",
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.stories).toBe(0);
+  });
+
+  it("warns on a stories file with a parse error and continues the scan", () => {
+    writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
+    writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "");
+    writeFileSync(join(cwd, "src", "components", "Broken.stories.tsx"), "export const Primary = (");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.name).toBe("Broken");
+    expect(result.components[0]?.stories).toBe(0);
+    expect(result.warnings.some((w) => w.includes("failed to parse stories file"))).toBe(true);
+  });
+
+  it("omits the stories field entirely when usesStorybook is false in the config", () => {
+    writeFileSync(
+      join(cwd, CONFIG_FILENAME),
+      JSON.stringify({ componentsPath: "src/components", usesStorybook: false }),
+    );
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Button.stories.tsx"),
+      "export default {}; export const Primary = {};",
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]).not.toHaveProperty("stories");
   });
 });
 
