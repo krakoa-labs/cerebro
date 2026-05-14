@@ -27,6 +27,7 @@ program
         console.warn(pc.yellow(`Warning: ${warning}`));
       }
 
+      console.log(pc.cyan(`Storybook: ${result.usesStorybook ? "detected" : "not detected"}`));
       console.log(
         pc.green(`Created ${CONFIG_FILENAME} (componentsPath: ${result.componentsPath})`),
       );

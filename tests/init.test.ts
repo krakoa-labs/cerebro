@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CONFIG_FILENAME, detectComponentsPath, init } from "../src/init.js";
+import { CONFIG_FILENAME, detectComponentsPath, detectStorybook, init } from "../src/init.js";
 
 describe("init", () => {
   let cwd: string;
@@ -25,10 +25,25 @@ describe("init", () => {
     const result = init({ cwd, componentsPath: "src/components" });
 
     expect(result.componentsPath).toBe("src/components");
+    expect(result.usesStorybook).toBe(false);
     expect(result.warnings).toEqual([]);
 
     const config = JSON.parse(readFileSync(join(cwd, CONFIG_FILENAME), "utf8"));
-    expect(config).toEqual({ componentsPath: "src/components" });
+    expect(config).toEqual({ componentsPath: "src/components", usesStorybook: false });
+  });
+
+  it("records usesStorybook: true when a .storybook directory exists at cwd", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    mkdirSync(join(cwd, ".storybook"));
+    writeFileSync(join(cwd, ".storybook", "main.ts"), "");
+
+    const result = init({ cwd, componentsPath: "src/components" });
+
+    expect(result.usesStorybook).toBe(true);
+
+    const config = JSON.parse(readFileSync(join(cwd, CONFIG_FILENAME), "utf8"));
+    expect(config).toEqual({ componentsPath: "src/components", usesStorybook: true });
   });
 
   it("normalizes absolute paths to relative", () => {
@@ -113,5 +128,31 @@ describe("detectComponentsPath", () => {
   it("ignores files matching a convention name", () => {
     writeFileSync(join(cwd, "components"), "");
     expect(detectComponentsPath(cwd)).toBeNull();
+  });
+});
+
+describe("detectStorybook", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-storybook-"));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("returns false when no .storybook entry exists", () => {
+    expect(detectStorybook(cwd)).toBe(false);
+  });
+
+  it("returns true when .storybook is a directory", () => {
+    mkdirSync(join(cwd, ".storybook"));
+    expect(detectStorybook(cwd)).toBe(true);
+  });
+
+  it("returns false when .storybook is a file", () => {
+    writeFileSync(join(cwd, ".storybook"), "");
+    expect(detectStorybook(cwd)).toBe(false);
   });
 });

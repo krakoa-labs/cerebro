@@ -10,10 +10,13 @@ export interface InitOptions {
 export interface InitResult {
   configPath: string;
   componentsPath: string;
+  usesStorybook: boolean;
   warnings: string[];
 }
 
 export const CONFIG_FILENAME = "cerebro.config.json";
+
+const STORYBOOK_DIRNAME = ".storybook";
 
 export const CONVENTIONAL_COMPONENTS_PATHS = [
   "src/components",
@@ -22,6 +25,18 @@ export const CONVENTIONAL_COMPONENTS_PATHS = [
   "components",
   "app/components",
 ];
+
+/**
+ * Detects whether the design system uses Storybook by checking for a
+ * `.storybook/` directory at the project root.
+ *
+ * @param cwd - The project root directory to check.
+ * @returns `true` when a `.storybook/` directory exists under `cwd`.
+ */
+export function detectStorybook(cwd: string): boolean {
+  const stat = statSync(resolve(cwd, STORYBOOK_DIRNAME), { throwIfNoEntry: false });
+  return stat?.isDirectory() ?? false;
+}
 
 /**
  * Detects the components folder of a design system by checking a fixed list of
@@ -49,8 +64,9 @@ export function detectComponentsPath(cwd: string): string | null {
  * @param options.componentsPath - Path to the components directory, absolute or
  *   relative to `cwd`. Absolute paths are normalized to a path relative to
  *   `cwd` before being written to the config.
- * @returns The resolved config path, the normalized components path, and any
- *   non-fatal warnings produced during validation.
+ * @returns The resolved config path, the normalized components path, whether
+ *   Storybook was detected at `cwd`, and any non-fatal warnings produced during
+ *   validation.
  * @throws If `componentsPath` does not exist, is not a directory, or is outside
  *   the project root.
  * @throws If `cerebro.config.json` already exists in `cwd`.
@@ -77,7 +93,9 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
   const warnings =
     readdirSync(absoluteTarget).length === 0 ? [`directory "${normalized}" is empty`] : [];
 
-  const payload = `${JSON.stringify({ componentsPath: normalized }, null, 2)}\n`;
+  const usesStorybook = detectStorybook(cwd);
+
+  const payload = `${JSON.stringify({ componentsPath: normalized, usesStorybook }, null, 2)}\n`;
   try {
     writeFileSync(configPath, payload, { encoding: "utf8", flag: "wx" });
   } catch (err) {
@@ -97,6 +115,7 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
   return {
     configPath,
     componentsPath: normalized,
+    usesStorybook,
     warnings,
   };
 }
