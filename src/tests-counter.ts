@@ -1,4 +1,5 @@
 import { Visitor } from "oxc-parser";
+import { isIdentifier, isMemberExpression } from "./ast-guards.js";
 import { parseSource } from "./parse-source.js";
 
 export interface TestCounts {
@@ -42,34 +43,12 @@ export function countTests(sourceText: string, filename: string): TestCounts {
   return counts;
 }
 
-interface IdentifierNode {
-  type: "Identifier";
-  name: string;
-}
-
-interface MemberExpressionNode {
-  type: "MemberExpression";
-  object: unknown;
-  property: unknown;
-}
-
-function isIdentifier(node: unknown): node is IdentifierNode {
-  return (
-    typeof node === "object" &&
-    node !== null &&
-    (node as { type?: unknown }).type === "Identifier" &&
-    typeof (node as { name?: unknown }).name === "string"
-  );
-}
-
-function isMemberExpression(node: unknown): node is MemberExpressionNode {
-  return (
-    typeof node === "object" &&
-    node !== null &&
-    (node as { type?: unknown }).type === "MemberExpression"
-  );
-}
-
+/**
+ * Classifies a test runner call by walking its callee chain.
+ *
+ * @param callee - The `CallExpression.callee` AST node to classify.
+ * @returns The detected test kind, or `null` for non-test calls.
+ */
 function classifyCallee(callee: unknown): "test" | "skipped" | "only" | null {
   const { root, properties } = collectMemberChain(callee);
 
@@ -80,6 +59,13 @@ function classifyCallee(callee: unknown): "test" | "skipped" | "only" | null {
   return "test";
 }
 
+/**
+ * Collects the root expression and property names from a member-expression
+ * chain such as `it.skip.each`.
+ *
+ * @param node - The AST node to walk.
+ * @returns The root expression and property chain, ordered from root outward.
+ */
 function collectMemberChain(node: unknown): { root: unknown; properties: string[] } {
   if (!isMemberExpression(node)) return { root: node, properties: [] };
 

@@ -4,9 +4,9 @@ Project-specific rules for AI agents working in this repo. Override the agent's 
 
 ## Code style
 
-### JSDoc on exported functions
+### JSDoc on all functions
 
-All exported functions, classes, and methods must have JSDoc. Internal helpers and exported types/interfaces with self-documenting fields don't need JSDoc.
+All functions, classes, and methods (exported or internal) must have JSDoc.
 
 ### Paragraph spacing
 

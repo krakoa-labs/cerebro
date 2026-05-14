@@ -10,6 +10,7 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const FIXTURE_BARREL_BASICS = join(REPO_ROOT, "fixtures", "barrel-basics");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
+const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
 
 function writeConfig(cwd: string, componentsPath: string, usesStorybook = false): void {
   writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify({ componentsPath, usesStorybook }));
@@ -348,7 +349,7 @@ describe("scan story counting", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("counts named exports of a co-located .stories.tsx file", () => {
+  it("breaks down CSF3 object-shaped stories from a co-located .stories.tsx file", () => {
     writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
     writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
     writeFileSync(
@@ -360,10 +361,16 @@ describe("scan story counting", () => {
 
     const result = scan({ cwd });
 
-    expect(result.components[0]?.stories).toBe(2);
+    expect(result.components[0]?.stories).toEqual({
+      total: 2,
+      csf1: 0,
+      csf2: 0,
+      csf3: 2,
+      other: 0,
+    });
   });
 
-  it("counts a co-located .stories.ts file as well", () => {
+  it("breaks down a co-located .stories.ts file as well", () => {
     writeBarrel(cwd, "src/components", `export { Token } from "./Token";`);
     writeFileSync(join(cwd, "src", "components", "Token.ts"), "");
     writeFileSync(
@@ -373,16 +380,40 @@ describe("scan story counting", () => {
 
     const result = scan({ cwd });
 
-    expect(result.components[0]?.stories).toBe(1);
+    expect(result.components[0]?.stories?.csf3).toBe(1);
+    expect(result.components[0]?.stories?.total).toBe(1);
   });
 
-  it("returns zero stories when no stories file exists for the Component", () => {
+  it("sums CSF2 and CSF3 breakdowns across both .stories.tsx and .stories.ts files", () => {
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Button.stories.tsx"),
+      "export default {}; export const Primary = (args) => null;",
+    );
+    writeFileSync(
+      join(cwd, "src", "components", "Button.stories.ts"),
+      "export default {}; export const Secondary = {};",
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.stories).toEqual({
+      total: 2,
+      csf1: 0,
+      csf2: 1,
+      csf3: 1,
+      other: 0,
+    });
+  });
+
+  it("returns an all-zero breakdown when no stories file exists for the Component", () => {
     writeBarrel(cwd, "src/components", `export { Lone } from "./Lone";`);
     writeFileSync(join(cwd, "src", "components", "Lone.tsx"), "");
 
     const result = scan({ cwd });
 
-    expect(result.components[0]?.stories).toBe(0);
+    expect(result.components[0]?.stories).toEqual(ZERO_STORIES);
     expect(result.warnings).toEqual([]);
   });
 
@@ -395,7 +426,7 @@ describe("scan story counting", () => {
 
     const result = scan({ cwd });
 
-    expect(result.components[0]?.stories).toBe(0);
+    expect(result.components[0]?.stories).toEqual(ZERO_STORIES);
   });
 
   it("warns on a stories file with a parse error and continues the scan", () => {
@@ -406,7 +437,7 @@ describe("scan story counting", () => {
     const result = scan({ cwd });
 
     expect(result.components[0]?.name).toBe("Broken");
-    expect(result.components[0]?.stories).toBe(0);
+    expect(result.components[0]?.stories).toEqual(ZERO_STORIES);
     expect(result.warnings.some((w) => w.includes("failed to parse stories file"))).toBe(true);
   });
 

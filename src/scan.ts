@@ -3,7 +3,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { parseBarrel } from "./barrel.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
-import { countStories } from "./stories-counter.js";
+import { type StoryBreakdown, ZERO_STORIES, analyzeStories } from "./stories-counter.js";
 import { type TestCounts, countTests } from "./tests-counter.js";
 
 export interface ScanOptions {
@@ -14,7 +14,7 @@ export interface ScannedComponent {
   name: string;
   path: string;
   tests: TestCounts;
-  stories?: number;
+  stories?: StoryBreakdown;
 }
 
 export interface ScanResult {
@@ -114,7 +114,9 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 
     if (!usesStorybook) return [{ name: exp.name, path: rel, tests }];
 
-    const stories = isBarrelLocal ? 0 : countStoriesForComponent(absolutePath, warnings, cwd);
+    const stories = isBarrelLocal
+      ? ZERO_STORIES
+      : analyzeStoriesForComponent(absolutePath, warnings, cwd);
 
     return [{ name: exp.name, path: rel, tests, stories }];
   });
@@ -132,6 +134,13 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   return { components: sortedComponents, warnings };
 }
 
+/**
+ * Validates the raw JSON config payload and returns normalized scan settings.
+ *
+ * @param raw - The parsed JSON config value.
+ * @returns The validated components path and Storybook flag.
+ * @throws If the config shape is invalid.
+ */
 function validateConfig(raw: unknown): { componentsPath: string; usesStorybook: boolean } {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`${CONFIG_FILENAME} must contain a JSON object.`);
@@ -157,6 +166,15 @@ function validateConfig(raw: unknown): { componentsPath: string; usesStorybook: 
   return { componentsPath: cp, usesStorybook: usb === true };
 }
 
+/**
+ * Resolves a barrel export source to the component source file it points at.
+ *
+ * @param barrelDir - Absolute directory containing the barrel file.
+ * @param specifier - The export source specifier from the barrel.
+ * @param importedName - The imported binding name, when available.
+ * @returns The resolved source file path, or `null` when no supported source
+ *   file can be found.
+ */
 function resolveSourcePath(
   barrelDir: string,
   specifier: string,
@@ -192,10 +210,22 @@ function resolveSourcePath(
   return findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `index${ext}`)));
 }
 
+/**
+ * Finds the first existing file path in a candidate list.
+ *
+ * @param candidates - Absolute file paths to check in priority order.
+ * @returns The first existing candidate, or `null` when none exist.
+ */
 function findExistingFile(candidates: string[]): string | null {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
+/**
+ * Builds the supported test-file candidates for a component source file.
+ *
+ * @param componentSource - Absolute path to the component source file.
+ * @returns Co-located and `__tests__` candidate file paths.
+ */
 function testFileCandidates(componentSource: string): string[] {
   const dir = dirname(componentSource);
   const base = basename(componentSource, extname(componentSource));
@@ -205,6 +235,12 @@ function testFileCandidates(componentSource: string): string[] {
   return [...colocated, ...subfolder];
 }
 
+/**
+ * Builds the supported story-file candidates for a component source file.
+ *
+ * @param componentSource - Absolute path to the component source file.
+ * @returns Co-located Storybook candidate file paths.
+ */
 function storyFileCandidates(componentSource: string): string[] {
   const dir = dirname(componentSource);
   const base = basename(componentSource, extname(componentSource));
@@ -212,12 +248,28 @@ function storyFileCandidates(componentSource: string): string[] {
   return STORY_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
 }
 
-function countStoriesForComponent(
-  componentSource: string,
-  warnings: string[],
-  cwd: string,
-): number {
-  return storyFileCandidates(componentSource).reduce<number>((acc, candidate) => {
+interface FoldOptions<T> {
+  candidates: string[];
+  zero: T;
+  label: string;
+  parse: (text: string, candidate: string) => T;
+  merge: (acc: T, next: T) => T;
+  warnings: string[];
+  cwd: string;
+}
+
+/**
+ * Folds a parsed-and-merged result over a list of candidate file paths.
+ * Missing files are silently skipped; read or parse errors are recorded as
+ * warnings (using `label` to compose the message) and the candidate is
+ * skipped without aborting the fold.
+ *
+ * @param opts - The fold configuration.
+ * @returns The merged result over all parseable candidate files.
+ */
+function foldOverCandidates<T>(opts: FoldOptions<T>): T {
+  const { candidates, zero, label, parse, merge, warnings, cwd } = opts;
+  return candidates.reduce<T>((acc, candidate) => {
     if (!existsSync(candidate)) return acc;
 
     const text = ((): string | null => {
@@ -226,7 +278,7 @@ function countStoriesForComponent(
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
         const rel = toPosixPath(relative(cwd, candidate));
-        warnings.push(`failed to read stories file "${rel}": ${(err as Error).message}`);
+        warnings.push(`failed to read ${label} file "${rel}": ${(err as Error).message}`);
         return null;
       }
     })();
@@ -234,47 +286,95 @@ function countStoriesForComponent(
     if (text === null) return acc;
 
     try {
-      return acc + countStories(text, candidate);
+      return merge(acc, parse(text, candidate));
     } catch (err) {
       const rel = toPosixPath(relative(cwd, candidate));
-      warnings.push(`failed to parse stories file "${rel}": ${(err as Error).message}`);
+      warnings.push(`failed to parse ${label} file "${rel}": ${(err as Error).message}`);
       return acc;
     }
-  }, 0);
+  }, zero);
 }
 
+/**
+ * Sums the CSF-generation breakdowns across every co-located stories file
+ * (`*.stories.tsx`, `*.stories.ts`) found next to a Component's source file.
+ *
+ * @param componentSource - Absolute path to the Component's source file.
+ * @param warnings - Mutable accumulator for non-fatal warnings raised during
+ *   stories-file reads or parses.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The summed `StoryBreakdown` across all co-located stories files,
+ *   or an all-zero breakdown if no stories file exists.
+ */
+function analyzeStoriesForComponent(
+  componentSource: string,
+  warnings: string[],
+  cwd: string,
+): StoryBreakdown {
+  return foldOverCandidates<StoryBreakdown>({
+    candidates: storyFileCandidates(componentSource),
+    zero: ZERO_STORIES,
+    label: "stories",
+    parse: analyzeStories,
+    merge: sumStoryBreakdowns,
+    warnings,
+    cwd,
+  });
+}
+
+/**
+ * Sums two story breakdowns field by field.
+ *
+ * @param acc - The current accumulated story breakdown.
+ * @param next - The next story breakdown to add.
+ * @returns The combined story breakdown.
+ */
+function sumStoryBreakdowns(acc: StoryBreakdown, next: StoryBreakdown): StoryBreakdown {
+  return {
+    total: acc.total + next.total,
+    csf1: acc.csf1 + next.csf1,
+    csf2: acc.csf2 + next.csf2,
+    csf3: acc.csf3 + next.csf3,
+    other: acc.other + next.other,
+  };
+}
+
+/**
+ * Sums test counts across every supported test candidate for a component.
+ *
+ * @param componentSource - Absolute path to the Component's source file.
+ * @param warnings - Mutable accumulator for non-fatal warnings raised during
+ *   test-file reads or parses.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The summed test counts, or all-zero counts if no test file exists.
+ */
 function countTestsForComponent(
   componentSource: string,
   warnings: string[],
   cwd: string,
 ): TestCounts {
-  return testFileCandidates(componentSource).reduce<TestCounts>((acc, candidate) => {
-    if (!existsSync(candidate)) return acc;
+  return foldOverCandidates<TestCounts>({
+    candidates: testFileCandidates(componentSource),
+    zero: ZERO_TESTS,
+    label: "test",
+    parse: countTests,
+    merge: sumTestCounts,
+    warnings,
+    cwd,
+  });
+}
 
-    const text = ((): string | null => {
-      try {
-        return readFileSync(candidate, "utf8");
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-        const rel = toPosixPath(relative(cwd, candidate));
-        warnings.push(`failed to read test file "${rel}": ${(err as Error).message}`);
-        return null;
-      }
-    })();
-
-    if (text === null) return acc;
-
-    try {
-      const counts = countTests(text, candidate);
-      return {
-        total: acc.total + counts.total,
-        skipped: acc.skipped + counts.skipped,
-        only: acc.only + counts.only,
-      };
-    } catch (err) {
-      const rel = toPosixPath(relative(cwd, candidate));
-      warnings.push(`failed to parse test file "${rel}": ${(err as Error).message}`);
-      return acc;
-    }
-  }, ZERO_TESTS);
+/**
+ * Sums two test-count objects field by field.
+ *
+ * @param acc - The current accumulated test counts.
+ * @param next - The next test counts to add.
+ * @returns The combined test counts.
+ */
+function sumTestCounts(acc: TestCounts, next: TestCounts): TestCounts {
+  return {
+    total: acc.total + next.total,
+    skipped: acc.skipped + next.skipped,
+    only: acc.only + next.only,
+  };
 }
