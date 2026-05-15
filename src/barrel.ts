@@ -1,6 +1,12 @@
 import { type ParsedSource, parseSource } from "./parse-source.js";
 
-export type BarrelWarningCode = "wildcard-export" | "default-export";
+export type BarrelWarningCode = "wildcard-export" | "namespace-reexport" | "default-export";
+
+export type ExportShape =
+  | "named-reexport"
+  | "renamed-reexport"
+  | "default-reexport"
+  | "barrel-local";
 
 export interface BarrelWarning {
   code: BarrelWarningCode;
@@ -11,6 +17,7 @@ export interface ParsedExport {
   name: string;
   source: string | null;
   importedName: string | null;
+  shape: ExportShape;
 }
 
 export interface ParsedBarrel {
@@ -22,7 +29,8 @@ type StaticExportEntry = ParsedSource["module"]["staticExports"][number]["entrie
 
 /**
  * Parses a barrel file and extracts its explicit named exports along with
- * warnings for shapes Cerebro does not yet support (wildcard, bare default).
+ * warnings for shapes Cerebro does not yet support (wildcard and namespace
+ * re-exports, bare default).
  *
  * @param sourceText - The barrel file contents.
  * @param filename - Path of the barrel file. Its extension determines whether
@@ -40,6 +48,9 @@ export function parseBarrel(sourceText: string, filename: string): ParsedBarrel 
     if (entry.exportName.kind === "None") {
       return [{ code: "wildcard-export", detail: entry.moduleRequest?.value ?? "" }];
     }
+    if (entry.importName.kind === "All") {
+      return [{ code: "namespace-reexport", detail: entry.moduleRequest?.value ?? "" }];
+    }
     if (entry.exportName.kind === "Default") {
       return [{ code: "default-export", detail: "" }];
     }
@@ -49,11 +60,17 @@ export function parseBarrel(sourceText: string, filename: string): ParsedBarrel 
   const exports = entries.flatMap<ParsedExport>((entry) => {
     if (entry.exportName.kind !== "Name") return [];
 
+    // A namespace re-export (`export * as Foo from "./m"`) carries a Name
+    // exportName but binds a whole module namespace, not a single Component.
+    // It is flagged as a warning above and excluded from the Component list.
+    if (entry.importName.kind === "All") return [];
+
     const name = entry.exportName.name;
     if (name === null) return [];
 
     const source = entry.moduleRequest?.value ?? null;
-    return [{ name, source, importedName: importedNameOf(entry, source) }];
+    const importedName = importedNameOf(entry, source);
+    return [{ name, source, importedName, shape: classifyShape(name, source, importedName) }];
   });
 
   return { exports, warnings };
@@ -66,4 +83,15 @@ function importedNameOf(entry: StaticExportEntry, source: string | null): string
   if (imp === null || imp === "default") return null;
 
   return imp;
+}
+
+function classifyShape(
+  name: string,
+  source: string | null,
+  importedName: string | null,
+): ExportShape {
+  if (source === null) return "barrel-local";
+  if (importedName === null) return "default-reexport";
+  if (importedName === name) return "named-reexport";
+  return "renamed-reexport";
 }

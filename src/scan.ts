@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { type ParsedExport, parseBarrel } from "./barrel.js";
+import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
 import { type DeprecationLookup, detectDeprecation } from "./deprecation-detector.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
@@ -17,6 +17,7 @@ export interface ScannedComponent {
   tests: TestCounts;
   stories?: StoryBreakdown;
   deprecated: boolean;
+  exportShape: ExportShape;
 }
 
 export interface ScanResult {
@@ -91,17 +92,13 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   const barrelRel = toPosixPath(relative(cwd, barrelPath));
   const parsed = parseBarrel(sourceText, barrelRel);
 
-  const parseWarnings = parsed.warnings.map((w) =>
-    w.code === "wildcard-export"
-      ? `skipped wildcard export "${w.detail}" (not supported in v1)`
-      : "skipped default export of the barrel (not supported in v1)",
-  );
+  const parseWarnings = parsed.warnings.map(describeWarning);
 
   const barrelDir = dirname(barrelPath);
   const warnings: string[] = [...parseWarnings];
 
   const components = parsed.exports.flatMap((exp): ScannedComponent[] => {
-    const isBarrelLocal = exp.source === null;
+    const isBarrelLocal = exp.shape === "barrel-local";
     const absolutePath = isBarrelLocal
       ? barrelPath
       : resolveSourcePath(barrelDir, exp.source as string, exp.importedName);
@@ -115,13 +112,14 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
     const deprecated = deprecationOf(absolutePath, exp, warnings, cwd);
 
-    if (!usesStorybook) return [{ name: exp.name, path: rel, tests, deprecated }];
+    if (!usesStorybook)
+      return [{ name: exp.name, path: rel, tests, deprecated, exportShape: exp.shape }];
 
     const stories = isBarrelLocal
       ? ZERO_STORIES
       : analyzeStoriesForComponent(absolutePath, warnings, cwd);
 
-    return [{ name: exp.name, path: rel, tests, stories, deprecated }];
+    return [{ name: exp.name, path: rel, tests, stories, deprecated, exportShape: exp.shape }];
   });
 
   const sortedComponents = components.toSorted((a, b) =>
@@ -135,6 +133,23 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   }
 
   return { components: sortedComponents, warnings };
+}
+
+/**
+ * Renders a barrel parse warning as a human-readable scan warning line.
+ *
+ * @param warning - The structured warning raised during barrel parsing.
+ * @returns The warning message to surface to the user.
+ */
+function describeWarning(warning: BarrelWarning): string {
+  switch (warning.code) {
+    case "wildcard-export":
+      return `skipped wildcard export "${warning.detail}" (not supported in v1)`;
+    case "namespace-reexport":
+      return `skipped namespace re-export "${warning.detail}" (not supported in v1)`;
+    case "default-export":
+      return "skipped default export of the barrel (not supported in v1)";
+  }
 }
 
 /**
@@ -418,21 +433,17 @@ function deprecationOf(
 
 /**
  * Maps a barrel-parsed export to the lookup shape understood by the
- * deprecation detector. Barrel-local declarations and named re-exports both
- * resolve to a named lookup; `default`-shaped re-exports resolve to the
- * default-export lookup.
- *
- * Relies on the `barrel.ts` convention (see `importedNameOf`) that
- * `importedName === null` with a non-null `source` means a default
- * re-export — `export { default as Foo } from "./Foo"`.
+ * deprecation detector. Only `default-reexport` shapes resolve to a default
+ * lookup; every other shape resolves to a named lookup against the
+ * source-side binding (or the barrel-side name when the export is declared
+ * locally in the barrel).
  *
  * @param exp - The barrel-parsed export.
  * @returns The corresponding deprecation lookup.
  */
 function lookupFor(exp: ParsedExport): DeprecationLookup {
-  if (exp.source === null) return { kind: "named", name: exp.name };
-  if (exp.importedName === null) return { kind: "default" };
-  return { kind: "named", name: exp.importedName };
+  if (exp.shape === "default-reexport") return { kind: "default" };
+  return { kind: "named", name: exp.importedName ?? exp.name };
 }
 
 /**

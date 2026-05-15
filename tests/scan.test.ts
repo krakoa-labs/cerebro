@@ -124,9 +124,27 @@ describe("scan", () => {
     const result = scan({ cwd });
 
     expect(result.components).toEqual([
-      { name: "Apple", path: "src/components/index.ts", tests: ZERO_TESTS, deprecated: false },
-      { name: "Mango", path: "src/components/Mango.tsx", tests: ZERO_TESTS, deprecated: false },
-      { name: "Zebra", path: "src/components/Zebra.ts", tests: ZERO_TESTS, deprecated: false },
+      {
+        name: "Apple",
+        path: "src/components/index.ts",
+        tests: ZERO_TESTS,
+        deprecated: false,
+        exportShape: "barrel-local",
+      },
+      {
+        name: "Mango",
+        path: "src/components/Mango.tsx",
+        tests: ZERO_TESTS,
+        deprecated: false,
+        exportShape: "default-reexport",
+      },
+      {
+        name: "Zebra",
+        path: "src/components/Zebra.ts",
+        tests: ZERO_TESTS,
+        deprecated: false,
+        exportShape: "named-reexport",
+      },
     ]);
     expect(result.warnings).toEqual([]);
   });
@@ -139,6 +157,18 @@ describe("scan", () => {
 
     expect(result.components).toEqual([]);
     expect(result.warnings).toEqual([`skipped wildcard export "./Forms" (not supported in v1)`]);
+  });
+
+  it("warns on a namespace re-export and skips it without producing a Component", () => {
+    writeConfig(cwd, "src/components");
+    writeBarrel(cwd, "src/components", `export * as Forms from "./Forms";`);
+
+    const result = scan({ cwd });
+
+    expect(result.components).toEqual([]);
+    expect(result.warnings).toEqual([
+      `skipped namespace re-export "./Forms" (not supported in v1)`,
+    ]);
   });
 
   it("warns on a default export and skips it", () => {
@@ -185,6 +215,7 @@ describe("scan", () => {
         path: "src/components/Button/index.tsx",
         tests: ZERO_TESTS,
         deprecated: false,
+        exportShape: "named-reexport",
       },
     ]);
   });
@@ -235,7 +266,13 @@ describe("scan", () => {
     const result = scan({ cwd });
 
     expect(result.components).toEqual([
-      { name: "Card", path: "src/components/Card.tsx", tests: ZERO_TESTS, deprecated: false },
+      {
+        name: "Card",
+        path: "src/components/Card.tsx",
+        tests: ZERO_TESTS,
+        deprecated: false,
+        exportShape: "named-reexport",
+      },
     ]);
   });
 });
@@ -474,21 +511,36 @@ describe("scan against the barrel-basics fixture", () => {
         path: "src/components/Button/Button.tsx",
         tests: { total: 5, skipped: 1, only: 1 },
         deprecated: false,
+        exportShape: "named-reexport",
       },
       {
         name: "Card",
         path: "src/components/Card.tsx",
         tests: { total: 2, skipped: 0, only: 0 },
         deprecated: true,
+        exportShape: "default-reexport",
       },
       {
         name: "Dialog",
         path: "src/components/Modal.tsx",
         tests: { total: 3, skipped: 1, only: 0 },
         deprecated: false,
+        exportShape: "renamed-reexport",
       },
-      { name: "Tooltip", path: "src/components/index.ts", tests: ZERO_TESTS, deprecated: false },
-      { name: "Variant", path: "src/components/index.ts", tests: ZERO_TESTS, deprecated: false },
+      {
+        name: "Tooltip",
+        path: "src/components/index.ts",
+        tests: ZERO_TESTS,
+        deprecated: false,
+        exportShape: "barrel-local",
+      },
+      {
+        name: "Variant",
+        path: "src/components/index.ts",
+        tests: ZERO_TESTS,
+        deprecated: false,
+        exportShape: "barrel-local",
+      },
     ]);
     expect(result.warnings).toEqual([
       `skipped wildcard export "./Forms" (not supported in v1)`,

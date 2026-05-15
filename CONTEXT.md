@@ -32,6 +32,10 @@ _Avoid_: Storybook detection (implies a one-off check rather than a persisted at
 A boolean Indicator per Component, true when the Component's source declaration carries a `/** @deprecated */` JSDoc tag. Mirrors what TypeScript and IDEs surface at usage sites, so Cerebro's verdict matches what a developer already sees in their editor.
 _Avoid_: Legacy, sunset, obsolete (vaguer terms; "legacy" especially conflates "old" with "marked-for-removal")
 
+**Export shape**:
+A categorical Indicator per Component describing the form of the barrel statement that publishes it. Values: `named-reexport` (`export { Button } from "./Button"`), `renamed-reexport` (`export { Button as PrimaryButton } from "./Button"`), `default-reexport` (`export { default as Button } from "./Button"`), `barrel-local` (declared directly in the barrel, e.g. `export const Button = ...`). Captures the *form of the publication statement* — not the form of the source-file declaration, which is invisible to consumers and therefore not a property of the Component.
+_Avoid_: Export type (overloaded with TypeScript "type" and ambiguous with source-file form), export style (subjective/evaluative), export kind (too generic)
+
 **Fixture**:
 A minimal fake design system kept under `fixtures/` whose sole purpose is to exercise a specific shape Cerebro must handle. Each fixture is paired with at least one test that asserts the expected indicators.
 _Avoid_: Example (implies user-facing demo), sample, test data
@@ -50,6 +54,7 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - A **DS developer** runs **Scans**; a **Lead DS** consumes the **Indicators** they produce
 - **Storybook usage** is an attribute of a **Design system**, set at init time, that gates Storybook-related Indicators
 - A **Component** carries a **Deprecation** indicator, derived from the `@deprecated` JSDoc tag on its source declaration
+- A **Component** carries an **Export shape** indicator, derived from the barrel statement that publishes it
 
 ## Example dialogue
 
@@ -60,3 +65,4 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 
 - "metric" was initially used interchangeably with **Indicator** — resolved: indicators are deterministic snapshots from static analysis, not telemetry. The project deliberately avoids "metric" to preserve this distinction.
 - "component" was initially ambiguous between three possible definitions: (a) what the design system publicly exports, (b) every React function/class declared in source, or (c) every PascalCase file under the components root. Resolved: a **Component** is (a). Things matching (b) or (c) but not exposed via the public barrel are **internal entities**, tracked separately by a future indicator (planned: "internal component not exported", not implemented yet).
+- "export type" / "type d'export" was initially ambiguous between (a) the form of the *publication statement in the barrel* and (b) the form of the *export at the source file* (named vs default, `function` vs `const`, etc.). Resolved as (a), now named **Export shape**. The source-file form is excluded because it is a pure code-style question (the file's choice of `export function` vs `export const`), not a substantive property of the Component — that level of source-style consistency is a linter's job, not Cerebro's. General rule that fell out of this discussion: Cerebro indicators measure substantive properties of a Component — quality, status, exposure, technical debt — including internal signals invisible to consumers (tests, stories). Code-style consistency questions are deferred to linters.
