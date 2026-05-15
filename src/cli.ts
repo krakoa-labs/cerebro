@@ -55,17 +55,19 @@ program
           only: acc.only + c.tests.only,
           stories: acc.stories + (c.stories?.total ?? 0),
           hasStories: acc.hasStories || c.stories !== undefined,
+          deprecated: acc.deprecated + (c.deprecated ? 1 : 0),
         }),
-        { total: 0, skipped: 0, only: 0, stories: 0, hasStories: false },
+        { total: 0, skipped: 0, only: 0, stories: 0, hasStories: false, deprecated: 0 },
       );
 
       const componentNoun = componentCount === 1 ? "Component" : "Components";
       const testNoun = totals.total === 1 ? "test" : "tests";
       const storyNoun = totals.stories === 1 ? "story" : "stories";
       const storiesFragment = totals.hasStories ? ` ${totals.stories} ${storyNoun}.` : "";
+      const deprecatedFragment = totals.deprecated > 0 ? ` ${totals.deprecated} deprecated.` : "";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}\n`,
         ),
       );
 

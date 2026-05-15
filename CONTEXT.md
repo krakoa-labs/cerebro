@@ -28,6 +28,10 @@ _Avoid_: Components folder, src/components (only one of several conventional lay
 A persisted attribute of a Design system that records whether the team uses Storybook. Recorded as `usesStorybook` in `cerebro.config.json`. Gates Storybook-related Indicators so they are only computed for Design systems that actually adopt the tool.
 _Avoid_: Storybook detection (implies a one-off check rather than a persisted attribute)
 
+**Deprecation**:
+A boolean Indicator per Component, true when the Component's source declaration carries a `/** @deprecated */` JSDoc tag. Mirrors what TypeScript and IDEs surface at usage sites, so Cerebro's verdict matches what a developer already sees in their editor.
+_Avoid_: Legacy, sunset, obsolete (vaguer terms; "legacy" especially conflates "old" with "marked-for-removal")
+
 **Fixture**:
 A minimal fake design system kept under `fixtures/` whose sole purpose is to exercise a specific shape Cerebro must handle. Each fixture is paired with at least one test that asserts the expected indicators.
 _Avoid_: Example (implies user-facing demo), sample, test data
@@ -45,6 +49,7 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - A **Fixture** is a minimal **Design system** used to validate Cerebro scans in tests
 - A **DS developer** runs **Scans**; a **Lead DS** consumes the **Indicators** they produce
 - **Storybook usage** is an attribute of a **Design system**, set at init time, that gates Storybook-related Indicators
+- A **Component** carries a **Deprecation** indicator, derived from the `@deprecated` JSDoc tag on its source declaration
 
 ## Example dialogue
 

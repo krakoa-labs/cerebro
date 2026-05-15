@@ -124,9 +124,9 @@ describe("scan", () => {
     const result = scan({ cwd });
 
     expect(result.components).toEqual([
-      { name: "Apple", path: "src/components/index.ts", tests: ZERO_TESTS },
-      { name: "Mango", path: "src/components/Mango.tsx", tests: ZERO_TESTS },
-      { name: "Zebra", path: "src/components/Zebra.ts", tests: ZERO_TESTS },
+      { name: "Apple", path: "src/components/index.ts", tests: ZERO_TESTS, deprecated: false },
+      { name: "Mango", path: "src/components/Mango.tsx", tests: ZERO_TESTS, deprecated: false },
+      { name: "Zebra", path: "src/components/Zebra.ts", tests: ZERO_TESTS, deprecated: false },
     ]);
     expect(result.warnings).toEqual([]);
   });
@@ -180,7 +180,12 @@ describe("scan", () => {
     const result = scan({ cwd });
 
     expect(result.components).toEqual([
-      { name: "Button", path: "src/components/Button/index.tsx", tests: ZERO_TESTS },
+      {
+        name: "Button",
+        path: "src/components/Button/index.tsx",
+        tests: ZERO_TESTS,
+        deprecated: false,
+      },
     ]);
   });
 
@@ -230,7 +235,7 @@ describe("scan", () => {
     const result = scan({ cwd });
 
     expect(result.components).toEqual([
-      { name: "Card", path: "src/components/Card.tsx", tests: ZERO_TESTS },
+      { name: "Card", path: "src/components/Card.tsx", tests: ZERO_TESTS, deprecated: false },
     ]);
   });
 });
@@ -468,19 +473,22 @@ describe("scan against the barrel-basics fixture", () => {
         name: "Button",
         path: "src/components/Button/Button.tsx",
         tests: { total: 5, skipped: 1, only: 1 },
+        deprecated: false,
       },
       {
         name: "Card",
         path: "src/components/Card.tsx",
         tests: { total: 2, skipped: 0, only: 0 },
+        deprecated: true,
       },
       {
         name: "Dialog",
         path: "src/components/Modal.tsx",
         tests: { total: 3, skipped: 1, only: 0 },
+        deprecated: false,
       },
-      { name: "Tooltip", path: "src/components/index.ts", tests: ZERO_TESTS },
-      { name: "Variant", path: "src/components/index.ts", tests: ZERO_TESTS },
+      { name: "Tooltip", path: "src/components/index.ts", tests: ZERO_TESTS, deprecated: false },
+      { name: "Variant", path: "src/components/index.ts", tests: ZERO_TESTS, deprecated: false },
     ]);
     expect(result.warnings).toEqual([
       `skipped wildcard export "./Forms" (not supported in v1)`,

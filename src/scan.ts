@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { parseBarrel } from "./barrel.js";
+import { type ParsedExport, parseBarrel } from "./barrel.js";
+import { type DeprecationLookup, detectDeprecation } from "./deprecation-detector.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
 import { type StoryBreakdown, ZERO_STORIES, analyzeStories } from "./stories-counter.js";
@@ -15,6 +16,7 @@ export interface ScannedComponent {
   path: string;
   tests: TestCounts;
   stories?: StoryBreakdown;
+  deprecated: boolean;
 }
 
 export interface ScanResult {
@@ -111,14 +113,15 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 
     const rel = toPosixPath(relative(cwd, absolutePath));
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
+    const deprecated = deprecationOf(absolutePath, exp, warnings, cwd);
 
-    if (!usesStorybook) return [{ name: exp.name, path: rel, tests }];
+    if (!usesStorybook) return [{ name: exp.name, path: rel, tests, deprecated }];
 
     const stories = isBarrelLocal
       ? ZERO_STORIES
       : analyzeStoriesForComponent(absolutePath, warnings, cwd);
 
-    return [{ name: exp.name, path: rel, tests, stories }];
+    return [{ name: exp.name, path: rel, tests, stories, deprecated }];
   });
 
   const sortedComponents = components.toSorted((a, b) =>
@@ -377,4 +380,83 @@ function sumTestCounts(acc: TestCounts, next: TestCounts): TestCounts {
     skipped: acc.skipped + next.skipped,
     only: acc.only + next.only,
   };
+}
+
+/**
+ * Computes the deprecation flag for a single Component by inspecting the
+ * leading JSDoc on the declaration its barrel export resolves to. Read or
+ * parse failures are recorded as warnings and the Component is reported as
+ * non-deprecated. For barrel-local Components the file is the barrel itself;
+ * the small redundant read is dominated by the parse cost the check incurs.
+ *
+ * @param absolutePath - Absolute path of the file containing the declaration.
+ * @param exp - The barrel-parsed export, used to determine what to look up.
+ * @param warnings - Mutable accumulator for non-fatal warnings.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns `true` when the resolved declaration carries a leading
+ *   `@deprecated` JSDoc tag.
+ */
+function deprecationOf(
+  absolutePath: string,
+  exp: ParsedExport,
+  warnings: string[],
+  cwd: string,
+): boolean {
+  const text = readSourceForDeprecation(absolutePath, warnings, cwd);
+  if (text === null) return false;
+
+  try {
+    return detectDeprecation(text, absolutePath, lookupFor(exp));
+  } catch (err) {
+    const rel = toPosixPath(relative(cwd, absolutePath));
+    warnings.push(
+      `failed to parse source "${rel}" for deprecation check: ${(err as Error).message}`,
+    );
+    return false;
+  }
+}
+
+/**
+ * Maps a barrel-parsed export to the lookup shape understood by the
+ * deprecation detector. Barrel-local declarations and named re-exports both
+ * resolve to a named lookup; `default`-shaped re-exports resolve to the
+ * default-export lookup.
+ *
+ * Relies on the `barrel.ts` convention (see `importedNameOf`) that
+ * `importedName === null` with a non-null `source` means a default
+ * re-export — `export { default as Foo } from "./Foo"`.
+ *
+ * @param exp - The barrel-parsed export.
+ * @returns The corresponding deprecation lookup.
+ */
+function lookupFor(exp: ParsedExport): DeprecationLookup {
+  if (exp.source === null) return { kind: "named", name: exp.name };
+  if (exp.importedName === null) return { kind: "default" };
+  return { kind: "named", name: exp.importedName };
+}
+
+/**
+ * Reads a source file for the deprecation check. Recoverable read errors are
+ * pushed onto `warnings` and the function returns `null`; the scan continues
+ * with `deprecated: false` for that Component.
+ *
+ * @param absolutePath - Absolute path of the source file to read.
+ * @param warnings - Mutable accumulator for non-fatal warnings.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The file contents, or `null` when the read failed.
+ */
+function readSourceForDeprecation(
+  absolutePath: string,
+  warnings: string[],
+  cwd: string,
+): string | null {
+  try {
+    return readFileSync(absolutePath, "utf8");
+  } catch (err) {
+    const rel = toPosixPath(relative(cwd, absolutePath));
+    warnings.push(
+      `failed to read source "${rel}" for deprecation check: ${(err as Error).message}`,
+    );
+    return null;
+  }
 }
