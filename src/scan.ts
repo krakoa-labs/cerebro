@@ -4,6 +4,7 @@ import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } 
 import { type DeprecationLookup, detectDeprecation } from "./deprecation-detector.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
+import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
 import { type StoryBreakdown, ZERO_STORIES, analyzeStories } from "./stories-counter.js";
 import { type TestCounts, countTests } from "./tests-counter.js";
 
@@ -18,6 +19,7 @@ export interface ScannedComponent {
   stories?: StoryBreakdown;
   deprecated: boolean;
   exportShape: ExportShape;
+  propsTyping: PropsTyping;
 }
 
 export interface ScanResult {
@@ -111,15 +113,28 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const rel = toPosixPath(relative(cwd, absolutePath));
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
     const deprecated = deprecationOf(absolutePath, exp, warnings, cwd);
+    const propsTyping = propsTypingOf(absolutePath, exp, warnings, cwd);
 
     if (!usesStorybook)
-      return [{ name: exp.name, path: rel, tests, deprecated, exportShape: exp.shape }];
+      return [
+        { name: exp.name, path: rel, tests, deprecated, exportShape: exp.shape, propsTyping },
+      ];
 
     const stories = isBarrelLocal
       ? ZERO_STORIES
       : analyzeStoriesForComponent(absolutePath, warnings, cwd);
 
-    return [{ name: exp.name, path: rel, tests, stories, deprecated, exportShape: exp.shape }];
+    return [
+      {
+        name: exp.name,
+        path: rel,
+        tests,
+        stories,
+        deprecated,
+        exportShape: exp.shape,
+        propsTyping,
+      },
+    ];
   });
 
   const sortedComponents = components.toSorted((a, b) =>
@@ -433,13 +448,13 @@ function deprecationOf(
 
 /**
  * Maps a barrel-parsed export to the lookup shape understood by the
- * deprecation detector. Only `default-reexport` shapes resolve to a default
- * lookup; every other shape resolves to a named lookup against the
+ * per-Component source detectors. Only `default-reexport` shapes resolve to a
+ * default lookup; every other shape resolves to a named lookup against the
  * source-side binding (or the barrel-side name when the export is declared
  * locally in the barrel).
  *
  * @param exp - The barrel-parsed export.
- * @returns The corresponding deprecation lookup.
+ * @returns The corresponding export lookup.
  */
 function lookupFor(exp: ParsedExport): DeprecationLookup {
   if (exp.shape === "default-reexport") return { kind: "default" };
@@ -467,6 +482,64 @@ function readSourceForDeprecation(
     const rel = toPosixPath(relative(cwd, absolutePath));
     warnings.push(
       `failed to read source "${rel}" for deprecation check: ${(err as Error).message}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Computes the props-typing classification for a single Component by
+ * inspecting the declaration its barrel export resolves to. Read or parse
+ * failures are recorded as warnings and the Component is reported as
+ * `unanalyzed`. For barrel-local Components the file is the barrel itself.
+ *
+ * @param absolutePath - Absolute path of the file containing the declaration.
+ * @param exp - The barrel-parsed export, used to determine what to look up.
+ * @param warnings - Mutable accumulator for non-fatal warnings.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The props-typing classification for the Component.
+ */
+function propsTypingOf(
+  absolutePath: string,
+  exp: ParsedExport,
+  warnings: string[],
+  cwd: string,
+): PropsTyping {
+  const text = readSourceForPropsTyping(absolutePath, warnings, cwd);
+  if (text === null) return "unanalyzed";
+
+  try {
+    return detectPropsTyping(text, absolutePath, lookupFor(exp));
+  } catch (err) {
+    const rel = toPosixPath(relative(cwd, absolutePath));
+    warnings.push(
+      `failed to parse source "${rel}" for props-typing check: ${(err as Error).message}`,
+    );
+    return "unanalyzed";
+  }
+}
+
+/**
+ * Reads a source file for the props-typing check. Recoverable read errors are
+ * pushed onto `warnings` and the function returns `null`; the scan continues
+ * with `unanalyzed` for that Component.
+ *
+ * @param absolutePath - Absolute path of the source file to read.
+ * @param warnings - Mutable accumulator for non-fatal warnings.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The file contents, or `null` when the read failed.
+ */
+function readSourceForPropsTyping(
+  absolutePath: string,
+  warnings: string[],
+  cwd: string,
+): string | null {
+  try {
+    return readFileSync(absolutePath, "utf8");
+  } catch (err) {
+    const rel = toPosixPath(relative(cwd, absolutePath));
+    warnings.push(
+      `failed to read source "${rel}" for props-typing check: ${(err as Error).message}`,
     );
     return null;
   }

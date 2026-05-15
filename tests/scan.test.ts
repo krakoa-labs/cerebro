@@ -8,6 +8,7 @@ import { scan } from "../src/scan.js";
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const FIXTURE_BARREL_BASICS = join(REPO_ROOT, "fixtures", "barrel-basics");
+const FIXTURE_PROPS_TYPING = join(REPO_ROOT, "fixtures", "props-typing");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -130,6 +131,7 @@ describe("scan", () => {
         tests: ZERO_TESTS,
         deprecated: false,
         exportShape: "barrel-local",
+        propsTyping: "unanalyzed",
       },
       {
         name: "Mango",
@@ -137,6 +139,7 @@ describe("scan", () => {
         tests: ZERO_TESTS,
         deprecated: false,
         exportShape: "default-reexport",
+        propsTyping: "unanalyzed",
       },
       {
         name: "Zebra",
@@ -144,6 +147,7 @@ describe("scan", () => {
         tests: ZERO_TESTS,
         deprecated: false,
         exportShape: "named-reexport",
+        propsTyping: "unanalyzed",
       },
     ]);
     expect(result.warnings).toEqual([]);
@@ -216,6 +220,7 @@ describe("scan", () => {
         tests: ZERO_TESTS,
         deprecated: false,
         exportShape: "named-reexport",
+        propsTyping: "unanalyzed",
       },
     ]);
   });
@@ -272,6 +277,7 @@ describe("scan", () => {
         tests: ZERO_TESTS,
         deprecated: false,
         exportShape: "named-reexport",
+        propsTyping: "unanalyzed",
       },
     ]);
   });
@@ -501,6 +507,60 @@ describe("scan story counting", () => {
   });
 });
 
+describe("scan props typing", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-props-"));
+    writeConfig(cwd, "src/components");
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("warns on a source file with a parse error and reports unanalyzed", () => {
+    writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
+    writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "export const Broken = (props: ");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.propsTyping).toBe("unanalyzed");
+    expect(result.warnings.some((w) => w.includes("for props-typing check"))).toBe(true);
+  });
+});
+
+describe("scan against the props-typing fixture", () => {
+  it("classifies props typing across every supported shape", () => {
+    const result = scan({ cwd: FIXTURE_PROPS_TYPING });
+
+    expect(result.components.map((c) => ({ name: c.name, propsTyping: c.propsTyping }))).toEqual([
+      { name: "Alert", propsTyping: "untyped" },
+      { name: "Badge", propsTyping: "typed" },
+      { name: "Banner", propsTyping: "typed" },
+      { name: "Button", propsTyping: "typed" },
+      { name: "Card", propsTyping: "typed" },
+      { name: "Checkbox", propsTyping: "untyped" },
+      { name: "Dialog", propsTyping: "typed" },
+      { name: "Divider", propsTyping: "untyped" },
+      { name: "IconButton", propsTyping: "untyped" },
+      { name: "Input", propsTyping: "typed" },
+      { name: "LegacyModal", propsTyping: "unanalyzed" },
+      { name: "Panel", propsTyping: "typed" },
+      { name: "Pill", propsTyping: "typed" },
+      { name: "Select", propsTyping: "typed" },
+      { name: "Sheet", propsTyping: "typed" },
+      { name: "Spinner", propsTyping: "typed" },
+      { name: "Surface", propsTyping: "unanalyzed" },
+      { name: "Tag", propsTyping: "typed" },
+      { name: "ThemedBox", propsTyping: "unanalyzed" },
+      { name: "Toast", propsTyping: "typed" },
+      { name: "Token", propsTyping: "unanalyzed" },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
 describe("scan against the barrel-basics fixture", () => {
   it("produces the expected indicators for the canonical mixed-shape DS", () => {
     const result = scan({ cwd: FIXTURE_BARREL_BASICS });
@@ -512,6 +572,7 @@ describe("scan against the barrel-basics fixture", () => {
         tests: { total: 5, skipped: 1, only: 1 },
         deprecated: false,
         exportShape: "named-reexport",
+        propsTyping: "unanalyzed",
       },
       {
         name: "Card",
@@ -519,6 +580,7 @@ describe("scan against the barrel-basics fixture", () => {
         tests: { total: 2, skipped: 0, only: 0 },
         deprecated: true,
         exportShape: "default-reexport",
+        propsTyping: "unanalyzed",
       },
       {
         name: "Dialog",
@@ -526,6 +588,7 @@ describe("scan against the barrel-basics fixture", () => {
         tests: { total: 3, skipped: 1, only: 0 },
         deprecated: false,
         exportShape: "renamed-reexport",
+        propsTyping: "unanalyzed",
       },
       {
         name: "Tooltip",
@@ -533,6 +596,7 @@ describe("scan against the barrel-basics fixture", () => {
         tests: ZERO_TESTS,
         deprecated: false,
         exportShape: "barrel-local",
+        propsTyping: "unanalyzed",
       },
       {
         name: "Variant",
@@ -540,6 +604,7 @@ describe("scan against the barrel-basics fixture", () => {
         tests: ZERO_TESTS,
         deprecated: false,
         exportShape: "barrel-local",
+        propsTyping: "unanalyzed",
       },
     ]);
     expect(result.warnings).toEqual([

@@ -1,0 +1,5 @@
+# Indicator shape follows the direction of detection failure
+
+A deterministic indicator can fail to reach a confident verdict — the scan may be unable to analyze a given Component. How that failure is represented depends on the *direction* of the default: ADR-0004 lets Deprecation default to `false` on failure because that direction is quiet (an undetected deprecation reads as "not deprecated", which alarms nobody), whereas Props typing cannot default an unanalyzable Component to `untyped` — that direction is loud, it would manufacture false technical debt and mislead a lead. So Props typing carries an explicit `unanalyzed` value, and the general rule is: when a detection-failure default would surface as (false) debt, the indicator carries an explicit unanalyzed value; when the default direction is quiet, a boolean default is acceptable.
+
+Accepted consequence: indicators are not uniformly shaped — some are booleans (Deprecation), some are categorical with an explicit unanalyzed value (Props typing). The shape is chosen per indicator by its failure direction, not by a blanket convention.

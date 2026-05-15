@@ -56,8 +56,9 @@ program
           stories: acc.stories + (c.stories?.total ?? 0),
           hasStories: acc.hasStories || c.stories !== undefined,
           deprecated: acc.deprecated + (c.deprecated ? 1 : 0),
+          untyped: acc.untyped + (c.propsTyping === "untyped" ? 1 : 0),
         }),
-        { total: 0, skipped: 0, only: 0, stories: 0, hasStories: false, deprecated: 0 },
+        { total: 0, skipped: 0, only: 0, stories: 0, hasStories: false, deprecated: 0, untyped: 0 },
       );
 
       const componentNoun = componentCount === 1 ? "Component" : "Components";
@@ -65,9 +66,10 @@ program
       const storyNoun = totals.stories === 1 ? "story" : "stories";
       const storiesFragment = totals.hasStories ? ` ${totals.stories} ${storyNoun}.` : "";
       const deprecatedFragment = totals.deprecated > 0 ? ` ${totals.deprecated} deprecated.` : "";
+      const untypedFragment = totals.untyped > 0 ? ` ${totals.untyped} untyped.` : "";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}${untypedFragment}\n`,
         ),
       );
 

@@ -36,6 +36,10 @@ _Avoid_: Legacy, sunset, obsolete (vaguer terms; "legacy" especially conflates "
 A categorical Indicator per Component describing the form of the barrel statement that publishes it. Values: `named-reexport` (`export { Button } from "./Button"`), `renamed-reexport` (`export { Button as PrimaryButton } from "./Button"`), `default-reexport` (`export { default as Button } from "./Button"`), `barrel-local` (declared directly in the barrel, e.g. `export const Button = ...`). Captures the *form of the publication statement* — not the form of the source-file declaration, which is invisible to consumers and therefore not a property of the Component.
 _Avoid_: Export type (overloaded with TypeScript "type" and ambiguous with source-file form), export style (subjective/evaluative), export kind (too generic)
 
+**Props typing**:
+A categorical Indicator per Component describing whether the Component's props carry a TypeScript type annotation. Values: `typed` (a type annotation governs the props — a parameter annotation, or the props generic argument of an `FC`/`forwardRef`/`memo` form; a Component that accepts no props is also `typed`, its contract being trivially complete), `untyped` (a function-component declaration with a props parameter was found and no annotation governs it), `unanalyzed` (no analyzable function-component declaration could be identified — deeply-wrapped HOCs, class components, barrel-local non-components, and shapes not yet supported all fall here). Reports only the *presence* of a type annotation, not its soundness: `props: any` counts as `typed`.
+_Avoid_: Typed props (implies a settled boolean), Props coverage (suggests a percentage like test coverage), Type safety (a verdict — Props typing does not judge `any` or weak types)
+
 **Fixture**:
 A minimal fake design system kept under `fixtures/` whose sole purpose is to exercise a specific shape Cerebro must handle. Each fixture is paired with at least one test that asserts the expected indicators.
 _Avoid_: Example (implies user-facing demo), sample, test data
@@ -55,6 +59,7 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - **Storybook usage** is an attribute of a **Design system**, set at init time, that gates Storybook-related Indicators
 - A **Component** carries a **Deprecation** indicator, derived from the `@deprecated` JSDoc tag on its source declaration
 - A **Component** carries an **Export shape** indicator, derived from the barrel statement that publishes it
+- A **Component** carries a **Props typing** indicator, derived from the type annotation governing its props parameter (or its absence)
 
 ## Example dialogue
 
@@ -66,3 +71,4 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - "metric" was initially used interchangeably with **Indicator** — resolved: indicators are deterministic snapshots from static analysis, not telemetry. The project deliberately avoids "metric" to preserve this distinction.
 - "component" was initially ambiguous between three possible definitions: (a) what the design system publicly exports, (b) every React function/class declared in source, or (c) every PascalCase file under the components root. Resolved: a **Component** is (a). Things matching (b) or (c) but not exposed via the public barrel are **internal entities**, tracked separately by a future indicator (planned: "internal component not exported", not implemented yet).
 - "export type" / "type d'export" was initially ambiguous between (a) the form of the *publication statement in the barrel* and (b) the form of the *export at the source file* (named vs default, `function` vs `const`, etc.). Resolved as (a), now named **Export shape**. The source-file form is excluded because it is a pure code-style question (the file's choice of `export function` vs `export const`), not a substantive property of the Component — that level of source-style consistency is a linter's job, not Cerebro's. General rule that fell out of this discussion: Cerebro indicators measure substantive properties of a Component — quality, status, exposure, technical debt — including internal signals invisible to consumers (tests, stories). Code-style consistency questions are deferred to linters.
+- "props typing" was initially entangled with props *quality* — resolved: **Props typing** reports only whether a type annotation is *present*, not whether it is sound. Whether a prop type is `any` or otherwise weak is a separate, deferred indicator. Consistent with the Export shape rule: an indicator measures one substantive property and does not bundle a quality verdict.
