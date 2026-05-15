@@ -57,8 +57,18 @@ program
           hasStories: acc.hasStories || c.stories !== undefined,
           deprecated: acc.deprecated + (c.deprecated ? 1 : 0),
           untyped: acc.untyped + (c.propsTyping === "untyped" ? 1 : 0),
+          classComponents: acc.classComponents + (c.definitionKind === "class" ? 1 : 0),
         }),
-        { total: 0, skipped: 0, only: 0, stories: 0, hasStories: false, deprecated: 0, untyped: 0 },
+        {
+          total: 0,
+          skipped: 0,
+          only: 0,
+          stories: 0,
+          hasStories: false,
+          deprecated: 0,
+          untyped: 0,
+          classComponents: 0,
+        },
       );
 
       const componentNoun = componentCount === 1 ? "Component" : "Components";
@@ -67,9 +77,12 @@ program
       const storiesFragment = totals.hasStories ? ` ${totals.stories} ${storyNoun}.` : "";
       const deprecatedFragment = totals.deprecated > 0 ? ` ${totals.deprecated} deprecated.` : "";
       const untypedFragment = totals.untyped > 0 ? ` ${totals.untyped} untyped.` : "";
+      const classNoun = totals.classComponents === 1 ? "component" : "components";
+      const classFragment =
+        totals.classComponents > 0 ? ` ${totals.classComponents} class ${classNoun}.` : "";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}${untypedFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}${untypedFragment}${classFragment}\n`,
         ),
       );
 

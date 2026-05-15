@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
+import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
 import { type DeprecationLookup, detectDeprecation } from "./deprecation-detector.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { toPosixPath } from "./paths.js";
@@ -20,6 +21,7 @@ export interface ScannedComponent {
   deprecated: boolean;
   exportShape: ExportShape;
   propsTyping: PropsTyping;
+  definitionKind: DefinitionKind;
 }
 
 export interface ScanResult {
@@ -114,10 +116,19 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
     const deprecated = deprecationOf(absolutePath, exp, warnings, cwd);
     const propsTyping = propsTypingOf(absolutePath, exp, warnings, cwd);
+    const definitionKind = definitionKindOf(absolutePath, exp, warnings, cwd);
 
     if (!usesStorybook)
       return [
-        { name: exp.name, path: rel, tests, deprecated, exportShape: exp.shape, propsTyping },
+        {
+          name: exp.name,
+          path: rel,
+          tests,
+          deprecated,
+          exportShape: exp.shape,
+          propsTyping,
+          definitionKind,
+        },
       ];
 
     const stories = isBarrelLocal
@@ -133,6 +144,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
         deprecated,
         exportShape: exp.shape,
         propsTyping,
+        definitionKind,
       },
     ];
   });
@@ -540,6 +552,64 @@ function readSourceForPropsTyping(
     const rel = toPosixPath(relative(cwd, absolutePath));
     warnings.push(
       `failed to read source "${rel}" for props-typing check: ${(err as Error).message}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Computes the definition-kind classification for a single Component by
+ * inspecting the declaration its barrel export resolves to. Read or parse
+ * failures are recorded as warnings and the Component is reported as
+ * `unanalyzed`. For barrel-local Components the file is the barrel itself.
+ *
+ * @param absolutePath - Absolute path of the file containing the declaration.
+ * @param exp - The barrel-parsed export, used to determine what to look up.
+ * @param warnings - Mutable accumulator for non-fatal warnings.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The definition-kind classification for the Component.
+ */
+function definitionKindOf(
+  absolutePath: string,
+  exp: ParsedExport,
+  warnings: string[],
+  cwd: string,
+): DefinitionKind {
+  const text = readSourceForDefinitionKind(absolutePath, warnings, cwd);
+  if (text === null) return "unanalyzed";
+
+  try {
+    return detectDefinitionKind(text, absolutePath, lookupFor(exp));
+  } catch (err) {
+    const rel = toPosixPath(relative(cwd, absolutePath));
+    warnings.push(
+      `failed to parse source "${rel}" for definition-kind check: ${(err as Error).message}`,
+    );
+    return "unanalyzed";
+  }
+}
+
+/**
+ * Reads a source file for the definition-kind check. Recoverable read errors
+ * are pushed onto `warnings` and the function returns `null`; the scan
+ * continues with `unanalyzed` for that Component.
+ *
+ * @param absolutePath - Absolute path of the source file to read.
+ * @param warnings - Mutable accumulator for non-fatal warnings.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The file contents, or `null` when the read failed.
+ */
+function readSourceForDefinitionKind(
+  absolutePath: string,
+  warnings: string[],
+  cwd: string,
+): string | null {
+  try {
+    return readFileSync(absolutePath, "utf8");
+  } catch (err) {
+    const rel = toPosixPath(relative(cwd, absolutePath));
+    warnings.push(
+      `failed to read source "${rel}" for definition-kind check: ${(err as Error).message}`,
     );
     return null;
   }

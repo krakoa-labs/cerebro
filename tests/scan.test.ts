@@ -8,6 +8,7 @@ import { scan } from "../src/scan.js";
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const FIXTURE_BARREL_BASICS = join(REPO_ROOT, "fixtures", "barrel-basics");
+const FIXTURE_DEFINITION_KIND = join(REPO_ROOT, "fixtures", "definition-kind");
 const FIXTURE_PROPS_TYPING = join(REPO_ROOT, "fixtures", "props-typing");
 const FIXTURE_STORYBOOK = join(REPO_ROOT, "fixtures", "storybook");
 
@@ -133,6 +134,7 @@ describe("scan", () => {
         deprecated: false,
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
+        definitionKind: "other",
       },
       {
         name: "Mango",
@@ -141,6 +143,7 @@ describe("scan", () => {
         deprecated: false,
         exportShape: "default-reexport",
         propsTyping: "unanalyzed",
+        definitionKind: "unanalyzed",
       },
       {
         name: "Zebra",
@@ -149,6 +152,7 @@ describe("scan", () => {
         deprecated: false,
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
+        definitionKind: "unanalyzed",
       },
     ]);
     expect(result.warnings).toEqual([]);
@@ -222,6 +226,7 @@ describe("scan", () => {
         deprecated: false,
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
+        definitionKind: "unanalyzed",
       },
     ]);
   });
@@ -279,6 +284,7 @@ describe("scan", () => {
         deprecated: false,
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
+        definitionKind: "unanalyzed",
       },
     ]);
   });
@@ -512,6 +518,7 @@ describe("scan against the barrel-basics fixture", () => {
         deprecated: false,
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
+        definitionKind: "other",
       },
       {
         name: "Card",
@@ -520,6 +527,7 @@ describe("scan against the barrel-basics fixture", () => {
         deprecated: true,
         exportShape: "default-reexport",
         propsTyping: "unanalyzed",
+        definitionKind: "other",
       },
       {
         name: "Dialog",
@@ -528,6 +536,7 @@ describe("scan against the barrel-basics fixture", () => {
         deprecated: false,
         exportShape: "renamed-reexport",
         propsTyping: "unanalyzed",
+        definitionKind: "other",
       },
       {
         name: "Tooltip",
@@ -536,6 +545,7 @@ describe("scan against the barrel-basics fixture", () => {
         deprecated: false,
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
+        definitionKind: "other",
       },
       {
         name: "Variant",
@@ -544,11 +554,61 @@ describe("scan against the barrel-basics fixture", () => {
         deprecated: false,
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
+        definitionKind: "unanalyzed",
       },
     ]);
     expect(result.warnings).toEqual([
       `skipped wildcard export "./Forms" (not supported in v1)`,
       "skipped default export of the barrel (not supported in v1)",
     ]);
+  });
+});
+
+describe("scan definition kind", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-defkind-"));
+    writeConfig(cwd, "src/components");
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("warns on a source file with a parse error and reports unanalyzed", () => {
+    writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
+    writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "export const Broken = (props: ");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.definitionKind).toBe("unanalyzed");
+    expect(result.warnings.some((w) => w.includes("for definition-kind check"))).toBe(true);
+  });
+});
+
+describe("scan against the definition-kind fixture", () => {
+  it("classifies the definition kind across every supported shape", () => {
+    const result = scan({ cwd: FIXTURE_DEFINITION_KIND });
+
+    expect(
+      result.components.map((c) => ({ name: c.name, definitionKind: c.definitionKind })),
+    ).toEqual([
+      { name: "ArrowButton", definitionKind: "function" },
+      { name: "CastButton", definitionKind: "function" },
+      { name: "CastInput", definitionKind: "function" },
+      { name: "ClassDialog", definitionKind: "class" },
+      { name: "ClassModal", definitionKind: "class" },
+      { name: "ConnectedMenu", definitionKind: "other" },
+      { name: "FnBadge", definitionKind: "function" },
+      { name: "MemoCard", definitionKind: "function" },
+      { name: "PlainHelper", definitionKind: "other" },
+      { name: "PureBadge", definitionKind: "class" },
+      { name: "RefInput", definitionKind: "function" },
+      { name: "StyledBox", definitionKind: "other" },
+      { name: "Token", definitionKind: "other" },
+      { name: "WrappedTabs", definitionKind: "function" },
+    ]);
+    expect(result.warnings).toEqual([]);
   });
 });
