@@ -9,6 +9,7 @@ import { scan } from "../src/scan.js";
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const FIXTURE_BARREL_BASICS = join(REPO_ROOT, "fixtures", "barrel-basics");
 const FIXTURE_PROPS_TYPING = join(REPO_ROOT, "fixtures", "props-typing");
+const FIXTURE_STORYBOOK = join(REPO_ROOT, "fixtures", "storybook");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -397,86 +398,6 @@ describe("scan story counting", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("breaks down CSF3 object-shaped stories from a co-located .stories.tsx file", () => {
-    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
-    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
-    writeFileSync(
-      join(cwd, "src", "components", "Button.stories.tsx"),
-      `export default {};
-       export const Primary = {};
-       export const Secondary = {};`,
-    );
-
-    const result = scan({ cwd });
-
-    expect(result.components[0]?.stories).toEqual({
-      total: 2,
-      csf1: 0,
-      csf2: 0,
-      csf3: 2,
-      other: 0,
-    });
-  });
-
-  it("breaks down a co-located .stories.ts file as well", () => {
-    writeBarrel(cwd, "src/components", `export { Token } from "./Token";`);
-    writeFileSync(join(cwd, "src", "components", "Token.ts"), "");
-    writeFileSync(
-      join(cwd, "src", "components", "Token.stories.ts"),
-      "export default {}; export const Default = {};",
-    );
-
-    const result = scan({ cwd });
-
-    expect(result.components[0]?.stories?.csf3).toBe(1);
-    expect(result.components[0]?.stories?.total).toBe(1);
-  });
-
-  it("sums CSF2 and CSF3 breakdowns across both .stories.tsx and .stories.ts files", () => {
-    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
-    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
-    writeFileSync(
-      join(cwd, "src", "components", "Button.stories.tsx"),
-      "export default {}; export const Primary = (args) => null;",
-    );
-    writeFileSync(
-      join(cwd, "src", "components", "Button.stories.ts"),
-      "export default {}; export const Secondary = {};",
-    );
-
-    const result = scan({ cwd });
-
-    expect(result.components[0]?.stories).toEqual({
-      total: 2,
-      csf1: 0,
-      csf2: 1,
-      csf3: 1,
-      other: 0,
-    });
-  });
-
-  it("returns an all-zero breakdown when no stories file exists for the Component", () => {
-    writeBarrel(cwd, "src/components", `export { Lone } from "./Lone";`);
-    writeFileSync(join(cwd, "src", "components", "Lone.tsx"), "");
-
-    const result = scan({ cwd });
-
-    expect(result.components[0]?.stories).toEqual(ZERO_STORIES);
-    expect(result.warnings).toEqual([]);
-  });
-
-  it("skips story lookup for Components declared locally in the barrel", () => {
-    writeBarrel(cwd, "src/components", `export const Inline = "x";`);
-    writeFileSync(
-      join(cwd, "src", "components", "index.stories.ts"),
-      "export default {}; export const Should = {}; export const NotCount = {};",
-    );
-
-    const result = scan({ cwd });
-
-    expect(result.components[0]?.stories).toEqual(ZERO_STORIES);
-  });
-
   it("warns on a stories file with a parse error and continues the scan", () => {
     writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
     writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "");
@@ -556,6 +477,24 @@ describe("scan against the props-typing fixture", () => {
       { name: "ThemedBox", propsTyping: "unanalyzed" },
       { name: "Toast", propsTyping: "typed" },
       { name: "Token", propsTyping: "unanalyzed" },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("scan against the storybook fixture", () => {
+  it("breaks down stories by CSF generation across every shape", () => {
+    const result = scan({ cwd: FIXTURE_STORYBOOK });
+
+    expect(result.components.map((c) => ({ name: c.name, stories: c.stories }))).toEqual([
+      { name: "Accordion", stories: { total: 2, csf1: 0, csf2: 1, csf3: 1, other: 0 } },
+      { name: "Button", stories: { total: 3, csf1: 0, csf2: 0, csf3: 3, other: 0 } },
+      { name: "Card", stories: { total: 2, csf1: 0, csf2: 2, csf3: 0, other: 0 } },
+      { name: "Modal", stories: { total: 2, csf1: 2, csf2: 0, csf3: 0, other: 0 } },
+      { name: "Pill", stories: ZERO_STORIES },
+      { name: "Spinner", stories: ZERO_STORIES },
+      { name: "Tabs", stories: { total: 2, csf1: 0, csf2: 0, csf3: 0, other: 2 } },
+      { name: "Toast", stories: { total: 2, csf1: 0, csf2: 1, csf3: 1, other: 0 } },
     ]);
     expect(result.warnings).toEqual([]);
   });
