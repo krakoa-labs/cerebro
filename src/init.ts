@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { CONFIG_FILENAME, DEFAULT_ACTIVITY_LOG_DEPTH, writeConfig } from "./config.js";
 import { detectGitRepo } from "./git.js";
@@ -13,11 +13,14 @@ export interface InitResult {
   configPath: string;
   componentsPath: string;
   usesStorybook: boolean;
+  usesFigmaCodeConnect: boolean;
   tracksActivityLog: boolean;
   warnings: string[];
 }
 
 const STORYBOOK_DIRNAME = ".storybook";
+
+const CODE_CONNECT_PACKAGE = "@figma/code-connect";
 
 export const CONVENTIONAL_COMPONENTS_PATHS = [
   "src/components",
@@ -37,6 +40,42 @@ export const CONVENTIONAL_COMPONENTS_PATHS = [
 export function detectStorybook(cwd: string): boolean {
   const stat = statSync(resolve(cwd, STORYBOOK_DIRNAME), { throwIfNoEntry: false });
   return stat?.isDirectory() ?? false;
+}
+
+/**
+ * Detects whether the design system uses Figma Code Connect by checking for
+ * the `@figma/code-connect` package in the `package.json` at the project root.
+ * Both `dependencies` and `devDependencies` are inspected. A missing,
+ * unreadable, or malformed `package.json` reads as "not detected".
+ *
+ * @param cwd - The project root directory to check.
+ * @returns `true` when `@figma/code-connect` is declared as a dependency.
+ */
+export function detectCodeConnect(cwd: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(resolve(cwd, "package.json"), "utf8"));
+  } catch {
+    return false;
+  }
+
+  return (
+    declaresCodeConnect(parsed, "dependencies") || declaresCodeConnect(parsed, "devDependencies")
+  );
+}
+
+/**
+ * Checks whether a parsed `package.json` value declares `@figma/code-connect`
+ * in the given dependency section.
+ *
+ * @param pkg - The parsed `package.json` value.
+ * @param section - The dependency section to inspect.
+ * @returns `true` when the section is an object listing `@figma/code-connect`.
+ */
+function declaresCodeConnect(pkg: unknown, section: "dependencies" | "devDependencies"): boolean {
+  if (typeof pkg !== "object" || pkg === null) return false;
+  const deps = (pkg as Record<string, unknown>)[section];
+  return typeof deps === "object" && deps !== null && CODE_CONNECT_PACKAGE in deps;
 }
 
 /**
@@ -66,8 +105,8 @@ export function detectComponentsPath(cwd: string): string | null {
  *   relative to `cwd`. Absolute paths are normalized to a path relative to
  *   `cwd` before being written to the config.
  * @returns The resolved config path, the normalized components path, whether
- *   Storybook was detected at `cwd`, whether `cwd` is a git repository, and any
- *   non-fatal warnings produced during validation.
+ *   Storybook and Figma Code Connect were detected at `cwd`, whether `cwd` is a
+ *   git repository, and any non-fatal warnings produced during validation.
  * @throws If `componentsPath` does not exist, is not a directory, or is outside
  *   the project root.
  * @throws If `cerebro.config.json` already exists in `cwd`.
@@ -95,11 +134,13 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
     readdirSync(absoluteTarget).length === 0 ? [`directory "${normalized}" is empty`] : [];
 
   const usesStorybook = detectStorybook(cwd);
+  const usesFigmaCodeConnect = detectCodeConnect(cwd);
   const tracksActivityLog = detectGitRepo(cwd);
 
   writeConfig(cwd, {
     componentsPath: normalized,
     usesStorybook,
+    usesFigmaCodeConnect,
     tracksActivityLog,
     activityLogDepth: DEFAULT_ACTIVITY_LOG_DEPTH,
   });
@@ -108,6 +149,7 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
     configPath,
     componentsPath: normalized,
     usesStorybook,
+    usesFigmaCodeConnect,
     tracksActivityLog,
     warnings,
   };

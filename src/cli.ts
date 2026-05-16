@@ -25,6 +25,9 @@ program
 
       console.log(pc.cyan(`Storybook: ${result.usesStorybook ? "detected" : "not detected"}`));
       console.log(
+        pc.cyan(`Code Connect: ${result.usesFigmaCodeConnect ? "detected" : "not detected"}`),
+      );
+      console.log(
         pc.cyan(`Git repository: ${result.tracksActivityLog ? "detected" : "not detected"}`),
       );
       console.log(
@@ -54,6 +57,8 @@ program
           only: acc.only + c.tests.only,
           stories: acc.stories + (c.stories?.total ?? 0),
           hasStories: acc.hasStories || c.stories !== undefined,
+          connections: acc.connections + (c.figmaConnections ?? 0),
+          hasConnections: acc.hasConnections || c.figmaConnections !== undefined,
           deprecated: acc.deprecated + (c.deprecated ? 1 : 0),
           untyped: acc.untyped + (c.propsTyping === "untyped" ? 1 : 0),
           classComponents: acc.classComponents + (c.definitionKind === "class" ? 1 : 0),
@@ -64,6 +69,8 @@ program
           only: 0,
           stories: 0,
           hasStories: false,
+          connections: 0,
+          hasConnections: false,
           deprecated: 0,
           untyped: 0,
           classComponents: 0,
@@ -74,6 +81,10 @@ program
       const testNoun = totals.total === 1 ? "test" : "tests";
       const storyNoun = totals.stories === 1 ? "story" : "stories";
       const storiesFragment = totals.hasStories ? ` ${totals.stories} ${storyNoun}.` : "";
+      const connectionNoun = totals.connections === 1 ? "connection" : "connections";
+      const connectionsFragment = totals.hasConnections
+        ? ` ${totals.connections} Figma ${connectionNoun}.`
+        : "";
       const deprecatedFragment = totals.deprecated > 0 ? ` ${totals.deprecated} deprecated.` : "";
       const untypedFragment = totals.untyped > 0 ? ` ${totals.untyped} untyped.` : "";
       const classNoun = totals.classComponents === 1 ? "component" : "components";
@@ -86,7 +97,7 @@ program
         : " Git: not a repository.";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}${untypedFragment}${classFragment}${gitFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${gitFragment}\n`,
         ),
       );
 

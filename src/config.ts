@@ -9,6 +9,7 @@ export const DEFAULT_ACTIVITY_LOG_DEPTH = 20;
 export interface CerebroConfig {
   componentsPath: string;
   usesStorybook: boolean;
+  usesFigmaCodeConnect: boolean;
   tracksActivityLog: boolean;
   activityLogDepth: number;
 }
@@ -18,8 +19,9 @@ export interface CerebroConfig {
  *
  * @param cwd - The project root directory.
  * @returns The validated config: the components path, the Storybook flag, the
- *   activity-log tracking flag, and the activity log depth (absent boolean
- *   flags are normalized to `false`, an absent depth to its default).
+ *   Code Connect flag, the activity-log tracking flag, and the activity log
+ *   depth (absent boolean flags are normalized to `false`, an absent depth to
+ *   its default).
  * @throws If the config file is missing, is not valid JSON, or has a shape
  *   that does not match the expected config.
  */
@@ -82,8 +84,8 @@ export function writeConfig(cwd: string, config: CerebroConfig): void {
  * Validates the raw JSON config payload and returns the normalized config.
  *
  * @param raw - The parsed JSON config value.
- * @returns The validated components path, Storybook flag, activity-log
- *   tracking flag, and activity log depth.
+ * @returns The validated components path, Storybook flag, Code Connect flag,
+ *   activity-log tracking flag, and activity log depth.
  * @throws If the config shape is invalid.
  */
 function validateConfig(raw: unknown): CerebroConfig {
@@ -108,6 +110,13 @@ function validateConfig(raw: unknown): CerebroConfig {
     );
   }
 
+  const ufcc = (raw as { usesFigmaCodeConnect?: unknown }).usesFigmaCodeConnect;
+  if (ufcc !== undefined && typeof ufcc !== "boolean") {
+    throw new Error(
+      `${CONFIG_FILENAME} has an invalid "usesFigmaCodeConnect" field: expected boolean, got ${typeof ufcc}.`,
+    );
+  }
+
   const tal = (raw as { tracksActivityLog?: unknown }).tracksActivityLog;
   if (tal !== undefined && typeof tal !== "boolean") {
     throw new Error(
@@ -127,6 +136,7 @@ function validateConfig(raw: unknown): CerebroConfig {
   return {
     componentsPath: cp,
     usesStorybook: usb === true,
+    usesFigmaCodeConnect: ufcc === true,
     tracksActivityLog: tal === true,
     activityLogDepth: ald === undefined ? DEFAULT_ACTIVITY_LOG_DEPTH : ald,
   };

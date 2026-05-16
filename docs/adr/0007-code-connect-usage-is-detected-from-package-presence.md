@@ -1,0 +1,7 @@
+# Code Connect usage is detected from package presence
+
+Storybook usage is detected from the `.storybook/` directory — a structural artifact a team cannot have without adopting Storybook. The natural parallel for Figma Code Connect would be `figma.config.json`, its configuration file. But `figma.config.json` is *optional*: the Code Connect CLI auto-discovers `*.figma.tsx` files and runs without any config file, which is needed only for advanced cases (custom `include`/`exclude`, a custom parser). Detecting Code Connect usage from `figma.config.json` would therefore produce frequent false negatives — a design system fully wired with Code Connect but no config file would read as not using it.
+
+Cerebro instead detects Code Connect usage from the presence of `@figma/code-connect` in the project's `package.json` (`dependencies` or `devDependencies`). The package is a hard prerequisite — a team cannot run Code Connect without it — and it is committed code, so the signal stays deterministic. The structural parallel with Storybook detection is sacrificed for reliability.
+
+Accepted consequence: Code Connect usage and Storybook usage are detected by different mechanisms — a `package.json` dependency check versus a directory check — so the two gating attributes are not symmetric in implementation. A package left installed after Code Connect was abandoned still reads as used; this is judged acceptable, mirroring how an empty `.storybook/` directory still reads as Storybook used.

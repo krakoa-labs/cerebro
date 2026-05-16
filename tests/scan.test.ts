@@ -12,6 +12,7 @@ const FIXTURE_BARREL_BASICS = join(REPO_ROOT, "fixtures", "barrel-basics");
 const FIXTURE_DEFINITION_KIND = join(REPO_ROOT, "fixtures", "definition-kind");
 const FIXTURE_PROPS_TYPING = join(REPO_ROOT, "fixtures", "props-typing");
 const FIXTURE_STORYBOOK = join(REPO_ROOT, "fixtures", "storybook");
+const FIXTURE_CODE_CONNECT = join(REPO_ROOT, "fixtures", "code-connect");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -70,6 +71,16 @@ describe("scan", () => {
     );
     expect(() => scan({ cwd })).toThrow(
       /invalid "usesStorybook" field: expected boolean, got string/,
+    );
+  });
+
+  it("throws when usesFigmaCodeConnect is present but not a boolean", () => {
+    writeFileSync(
+      join(cwd, CONFIG_FILENAME),
+      JSON.stringify({ componentsPath: "src/components", usesFigmaCodeConnect: "yes" }),
+    );
+    expect(() => scan({ cwd })).toThrow(
+      /invalid "usesFigmaCodeConnect" field: expected boolean, got string/,
     );
   });
 
@@ -445,6 +456,73 @@ describe("scan story counting", () => {
   });
 });
 
+describe("scan Code Connect counting", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-codeconnect-"));
+    writeFileSync(
+      join(cwd, CONFIG_FILENAME),
+      JSON.stringify({ componentsPath: "src/components", usesFigmaCodeConnect: true }),
+    );
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("counts figma.connect() calls in a co-located Code Connect file", () => {
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Button.figma.tsx"),
+      `figma.connect(Button, "url-1", {});\nfigma.connect(Button, "url-2", {});`,
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.figmaConnections).toBe(2);
+  });
+
+  it("reports zero connections when no Code Connect file exists", () => {
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.figmaConnections).toBe(0);
+  });
+
+  it("warns on a Code Connect file with a parse error and continues the scan", () => {
+    writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
+    writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "");
+    writeFileSync(join(cwd, "src", "components", "Broken.figma.tsx"), "figma.connect(");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.name).toBe("Broken");
+    expect(result.components[0]?.figmaConnections).toBe(0);
+    expect(result.warnings.some((w) => w.includes("failed to parse Code Connect file"))).toBe(true);
+  });
+
+  it("omits the figmaConnections field entirely when usesFigmaCodeConnect is false", () => {
+    writeFileSync(
+      join(cwd, CONFIG_FILENAME),
+      JSON.stringify({ componentsPath: "src/components", usesFigmaCodeConnect: false }),
+    );
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Button.figma.tsx"),
+      `figma.connect(Button, "url", {});`,
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]).not.toHaveProperty("figmaConnections");
+  });
+});
+
 describe("scan against the props-typing fixture", () => {
   it("classifies props typing across every supported shape", () => {
     const result = scan({ cwd: FIXTURE_PROPS_TYPING });
@@ -489,6 +567,23 @@ describe("scan against the storybook fixture", () => {
       { name: "Spinner", stories: ZERO_STORIES },
       { name: "Tabs", stories: { total: 2, csf1: 0, csf2: 0, csf3: 0, other: 2 } },
       { name: "Toast", stories: { total: 2, csf1: 0, csf2: 1, csf3: 1, other: 0 } },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("scan against the code-connect fixture", () => {
+  it("counts figma.connect() calls per Component across every shape", () => {
+    const result = scan({ cwd: FIXTURE_CODE_CONNECT });
+
+    expect(
+      result.components.map((c) => ({ name: c.name, figmaConnections: c.figmaConnections })),
+    ).toEqual([
+      { name: "Button", figmaConnections: 2 },
+      { name: "Card", figmaConnections: 1 },
+      { name: "Pill", figmaConnections: 0 },
+      { name: "Spinner", figmaConnections: 0 },
+      { name: "Toast", figmaConnections: 1 },
     ]);
     expect(result.warnings).toEqual([]);
   });

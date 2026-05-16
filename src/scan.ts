@@ -1,6 +1,7 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
+import { countConnectionsForComponent } from "./code-connect-counter.js";
 import { readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
 import { detectDeprecation } from "./deprecation-detector.js";
@@ -26,6 +27,7 @@ export interface ScannedComponent {
   path: string;
   tests: TestCounts;
   stories?: StoryBreakdown;
+  figmaConnections?: number;
   deprecated: boolean;
   exportShape: ExportShape;
   propsTyping: PropsTyping;
@@ -55,6 +57,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   const {
     componentsPath: componentsPathRel,
     usesStorybook,
+    usesFigmaCodeConnect,
     tracksActivityLog,
     activityLogDepth,
   } = readConfig(cwd);
@@ -137,6 +140,12 @@ export function scan({ cwd }: ScanOptions): ScanResult {
         ? ZERO_STORIES
         : analyzeStoriesForComponent(absolutePath, warnings, cwd);
 
+    const figmaConnections = !usesFigmaCodeConnect
+      ? undefined
+      : isBarrelLocal
+        ? 0
+        : countConnectionsForComponent(absolutePath, warnings, cwd);
+
     const activityLog = produceActivityLog
       ? readActivityLog(cwd, gitScopeOf(absolutePath, componentsPerDir, cwd), activityLogDepth)
       : undefined;
@@ -150,6 +159,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       propsTyping,
       definitionKind,
       ...(stories !== undefined ? { stories } : {}),
+      ...(figmaConnections !== undefined ? { figmaConnections } : {}),
       ...(activityLog !== undefined ? { activityLog } : {}),
     };
   });

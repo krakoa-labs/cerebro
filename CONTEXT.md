@@ -28,6 +28,10 @@ _Avoid_: Components folder, src/components (only one of several conventional lay
 A persisted attribute of a Design system that records whether the team uses Storybook. Recorded as `usesStorybook` in `cerebro.config.json`. Gates Storybook-related Indicators so they are only computed for Design systems that actually adopt the tool.
 _Avoid_: Storybook detection (implies a one-off check rather than a persisted attribute)
 
+**Code Connect usage**:
+A persisted attribute of a Design system that records whether the team uses Figma Code Connect. Recorded as `usesFigmaCodeConnect` in `cerebro.config.json`, detected at init from the presence of `@figma/code-connect` in the project's `package.json` (`dependencies` or `devDependencies`). Gates the Code Connect connection count so it is only computed for Design systems that actually adopt the tool.
+_Avoid_: Code Connect detection (implies a one-off check rather than a persisted attribute)
+
 **Deprecation**:
 A boolean Indicator per Component, true when the Component's source declaration carries a `/** @deprecated */` JSDoc tag. Mirrors what TypeScript and IDEs surface at usage sites, so Cerebro's verdict matches what a developer already sees in their editor.
 _Avoid_: Legacy, sunset, obsolete (vaguer terms; "legacy" especially conflates "old" with "marked-for-removal")
@@ -39,6 +43,10 @@ _Avoid_: Export type (overloaded with TypeScript "type" and ambiguous with sourc
 **Props typing**:
 A categorical Indicator per Component describing whether the Component's props carry a TypeScript type annotation. Values: `typed` (a type annotation governs the props — a parameter annotation, or the props generic argument of an `FC`/`forwardRef`/`memo` form; a Component that accepts no props is also `typed`, its contract being trivially complete), `untyped` (a function-component declaration with a props parameter was found and no annotation governs it), `unanalyzed` (no analyzable function-component declaration could be identified — deeply-wrapped HOCs, class components, barrel-local non-components, and shapes not yet supported all fall here). Reports only the *presence* of a type annotation, not its soundness: `props: any` counts as `typed`.
 _Avoid_: Typed props (implies a settled boolean), Props coverage (suggests a percentage like test coverage), Type safety (a verdict — Props typing does not judge `any` or weak types)
+
+**Code Connect connection**:
+A reference from a Component in the design system's code to a component or variant in Figma, declared by a single `figma.connect()` call in a Code Connect file (`*.figma.tsx` / `*.figma.ts`) co-located with the Component's source file. Counted per Component as `figmaConnections`, gated by Code Connect usage. The count is the number of `figma.connect()` calls, not of Code Connect files: one file may declare several connections, typically one per Figma variant.
+_Avoid_: Code Connect file (names the container — one file can declare several connections), Code Connect coverage (suggests a percentage like test coverage)
 
 **Activity log**:
 A per-Component category of scan output — the list, newest first by committer date, of the most recent commits that touched the Component's Git scope. An Activity log is *not* an Indicator: it is raw recorded git history handed to a consumer (such as the future dashboard) to interpret, not a derived verdict that surfaces a decision on its own. Each entry carries the commit's full SHA, committer date, author name and email, and subject. The number of commits is a fixed count (default 20, configurable via `activityLogDepth`) and deliberately not a time window — a wall-clock window would make a Scan depend on the day it runs and break its determinism, so date-based views are left to the consumer.
@@ -69,9 +77,11 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - A **Fixture** is a minimal **Design system** used to validate Cerebro scans in tests
 - A **DS developer** runs **Scans**; a **Lead DS** consumes the **Indicators** they produce
 - **Storybook usage** is an attribute of a **Design system**, set at init time, that gates Storybook-related Indicators
+- **Code Connect usage** is an attribute of a **Design system**, set at init time, that gates the **Code Connect connection** count
 - A **Component** carries a **Deprecation** indicator, derived from the `@deprecated` JSDoc tag on its source declaration
 - A **Component** carries an **Export shape** indicator, derived from the barrel statement that publishes it
 - A **Component** carries a **Props typing** indicator, derived from the type annotation governing its props parameter (or its absence)
+- A **Component** carries a **Code Connect connection** count — the number of `figma.connect()` calls in its co-located Code Connect files — produced only when **Code Connect usage** is on
 - A **Component** carries an **Activity log**, the recent commits touching its **Git scope** — produced only when **Activity log tracking** is on and the **Design system** is a git repository
 - **Activity log tracking** is an attribute of a **Design system**, set at init time from git detection, that gates the **Activity log**
 
@@ -91,3 +101,4 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - "props typing" was initially entangled with props *quality* — resolved: **Props typing** reports only whether a type annotation is *present*, not whether it is sound. Whether a prop type is `any` or otherwise weak is a separate, deferred indicator. Consistent with the Export shape rule: an indicator measures one substantive property and does not bundle a quality verdict.
 - "history" was ambiguous between (a) a raw list of recent commits and (b) a derived verdict about activity or staleness. Resolved: the raw list is an **Activity log**, deliberately *not* an Indicator — "Indicator" stays reserved for derived deterministic values that surface a decision. A staleness or churn verdict, if ever needed, would be a separate future Indicator built on top of the log.
 - a time-windowed activity log ("commits in the last 90 days") was considered and rejected: a wall-clock window makes a **Scan**'s output depend on the date it runs — the same repository state would yield a different log a month later — which contradicts the determinism that defines a Scan. The **Activity log** is a fixed count instead; date filtering is left to the consumer, which can use the committer date on each entry.
+- "connection" (Code Connect) was ambiguous between (a) a `.figma.tsx` file, (b) a `figma.connect()` call, and (c) a Figma node. Resolved as (b): a **Code Connect connection** is one `figma.connect()` call — the declarative unit. A single file can hold several calls (typically one per Figma variant), so the file count carries no decision-relevant signal; the Figma node is the *target* of a connection, not the connection itself.

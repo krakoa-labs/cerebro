@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CONFIG_FILENAME } from "../src/config.js";
-import { detectComponentsPath, detectStorybook, init } from "../src/init.js";
+import { detectCodeConnect, detectComponentsPath, detectStorybook, init } from "../src/init.js";
 
 describe("init", () => {
   let cwd: string;
@@ -28,6 +28,7 @@ describe("init", () => {
 
     expect(result.componentsPath).toBe("src/components");
     expect(result.usesStorybook).toBe(false);
+    expect(result.usesFigmaCodeConnect).toBe(false);
     expect(result.tracksActivityLog).toBe(false);
     expect(result.warnings).toEqual([]);
 
@@ -35,6 +36,7 @@ describe("init", () => {
     expect(config).toEqual({
       componentsPath: "src/components",
       usesStorybook: false,
+      usesFigmaCodeConnect: false,
       tracksActivityLog: false,
       activityLogDepth: 20,
     });
@@ -54,9 +56,26 @@ describe("init", () => {
     expect(config).toEqual({
       componentsPath: "src/components",
       usesStorybook: true,
+      usesFigmaCodeConnect: false,
       tracksActivityLog: false,
       activityLogDepth: 20,
     });
+  });
+
+  it("records usesFigmaCodeConnect: true when @figma/code-connect is a dependency", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "package.json"),
+      JSON.stringify({ devDependencies: { "@figma/code-connect": "^1.0.0" } }),
+    );
+
+    const result = init({ cwd, componentsPath: "src/components" });
+
+    expect(result.usesFigmaCodeConnect).toBe(true);
+
+    const config = JSON.parse(readFileSync(join(cwd, CONFIG_FILENAME), "utf8"));
+    expect(config.usesFigmaCodeConnect).toBe(true);
   });
 
   it("records tracksActivityLog: true when cwd is a git repository", () => {
@@ -180,5 +199,55 @@ describe("detectStorybook", () => {
   it("returns false when .storybook is a file", () => {
     writeFileSync(join(cwd, ".storybook"), "");
     expect(detectStorybook(cwd)).toBe(false);
+  });
+});
+
+describe("detectCodeConnect", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-codeconnect-"));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("returns false when no package.json exists", () => {
+    expect(detectCodeConnect(cwd)).toBe(false);
+  });
+
+  it("returns false when package.json is not valid JSON", () => {
+    writeFileSync(join(cwd, "package.json"), "{ not json");
+    expect(detectCodeConnect(cwd)).toBe(false);
+  });
+
+  it("returns false when @figma/code-connect is absent", () => {
+    writeFileSync(join(cwd, "package.json"), JSON.stringify({ devDependencies: { vitest: "^2" } }));
+    expect(detectCodeConnect(cwd)).toBe(false);
+  });
+
+  it("detects @figma/code-connect in devDependencies", () => {
+    writeFileSync(
+      join(cwd, "package.json"),
+      JSON.stringify({ devDependencies: { "@figma/code-connect": "^1.0.0" } }),
+    );
+    expect(detectCodeConnect(cwd)).toBe(true);
+  });
+
+  it("detects @figma/code-connect in dependencies", () => {
+    writeFileSync(
+      join(cwd, "package.json"),
+      JSON.stringify({ dependencies: { "@figma/code-connect": "^1.0.0" } }),
+    );
+    expect(detectCodeConnect(cwd)).toBe(true);
+  });
+
+  it("ignores @figma/code-connect declared only in peerDependencies", () => {
+    writeFileSync(
+      join(cwd, "package.json"),
+      JSON.stringify({ peerDependencies: { "@figma/code-connect": "^1.0.0" } }),
+    );
+    expect(detectCodeConnect(cwd)).toBe(false);
   });
 });
