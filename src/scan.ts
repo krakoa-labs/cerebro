@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
+import { readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
 import { detectDeprecation } from "./deprecation-detector.js";
 import type { ExportLookup } from "./export-resolution.js";
-import { CONFIG_FILENAME } from "./init.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
@@ -50,28 +50,7 @@ const ZERO_TESTS: TestCounts = { total: 0, skipped: 0, only: 0 };
  *   components root, or if no barrel index file is found.
  */
 export function scan({ cwd }: ScanOptions): ScanResult {
-  const configPath = resolve(cwd, CONFIG_FILENAME);
-
-  const configText = ((): string => {
-    try {
-      return readFileSync(configPath, "utf8");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        throw new Error(`No ${CONFIG_FILENAME} found. Run "cerebro init" first.`);
-      }
-      throw err;
-    }
-  })();
-
-  const rawConfig = ((): unknown => {
-    try {
-      return JSON.parse(configText);
-    } catch (err) {
-      throw new Error(`Failed to parse ${CONFIG_FILENAME}: ${(err as Error).message}`);
-    }
-  })();
-
-  const { componentsPath: componentsPathRel, usesStorybook } = validateConfig(rawConfig);
+  const { componentsPath: componentsPathRel, usesStorybook } = readConfig(cwd);
 
   const componentsRoot = resolve(cwd, componentsPathRel);
   const rootStat = statSync(componentsRoot, { throwIfNoEntry: false });
@@ -182,38 +161,6 @@ function describeWarning(warning: BarrelWarning): string {
     case "default-export":
       return "skipped default export of the barrel (not supported in v1)";
   }
-}
-
-/**
- * Validates the raw JSON config payload and returns normalized scan settings.
- *
- * @param raw - The parsed JSON config value.
- * @returns The validated components path and Storybook flag.
- * @throws If the config shape is invalid.
- */
-function validateConfig(raw: unknown): { componentsPath: string; usesStorybook: boolean } {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error(`${CONFIG_FILENAME} must contain a JSON object.`);
-  }
-
-  const cp = (raw as { componentsPath?: unknown }).componentsPath;
-  if (cp === undefined) {
-    throw new Error(`${CONFIG_FILENAME} is missing the "componentsPath" field.`);
-  }
-  if (typeof cp !== "string") {
-    throw new Error(
-      `${CONFIG_FILENAME} has an invalid "componentsPath" field: expected string, got ${typeof cp}.`,
-    );
-  }
-
-  const usb = (raw as { usesStorybook?: unknown }).usesStorybook;
-  if (usb !== undefined && typeof usb !== "boolean") {
-    throw new Error(
-      `${CONFIG_FILENAME} has an invalid "usesStorybook" field: expected boolean, got ${typeof usb}.`,
-    );
-  }
-
-  return { componentsPath: cp, usesStorybook: usb === true };
 }
 
 /**

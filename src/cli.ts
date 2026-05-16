@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import pc from "picocolors";
-import {
-  CONFIG_FILENAME,
-  CONVENTIONAL_COMPONENTS_PATHS,
-  detectComponentsPath,
-  init,
-} from "./init.js";
+import { CONFIG_FILENAME } from "./config.js";
+import { CONVENTIONAL_COMPONENTS_PATHS, detectComponentsPath, init } from "./init.js";
 import { scan } from "./scan.js";
 
 const program = new Command();

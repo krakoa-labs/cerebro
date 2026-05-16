@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CONFIG_FILENAME, detectComponentsPath, detectStorybook, init } from "../src/init.js";
+import { CONFIG_FILENAME } from "../src/config.js";
+import { detectComponentsPath, detectStorybook, init } from "../src/init.js";
 
 describe("init", () => {
   let cwd: string;

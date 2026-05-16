@@ -1,5 +1,6 @@
-import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import { CONFIG_FILENAME, writeConfig } from "./config.js";
 import { toPosixPath } from "./paths.js";
 
 export interface InitOptions {
@@ -13,8 +14,6 @@ export interface InitResult {
   usesStorybook: boolean;
   warnings: string[];
 }
-
-export const CONFIG_FILENAME = "cerebro.config.json";
 
 const STORYBOOK_DIRNAME = ".storybook";
 
@@ -95,22 +94,7 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
 
   const usesStorybook = detectStorybook(cwd);
 
-  const payload = `${JSON.stringify({ componentsPath: normalized, usesStorybook }, null, 2)}\n`;
-  try {
-    writeFileSync(configPath, payload, { encoding: "utf8", flag: "wx" });
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "EEXIST") {
-      throw new Error(`${CONFIG_FILENAME} already exists. Delete it to re-init.`);
-    }
-    if (code === "EACCES" || code === "EPERM") {
-      throw new Error(`permission denied writing ${CONFIG_FILENAME} in "${cwd}".`);
-    }
-    if (code === "ENOSPC") {
-      throw new Error(`no space left on device when writing ${CONFIG_FILENAME}.`);
-    }
-    throw err;
-  }
+  writeConfig(cwd, { componentsPath: normalized, usesStorybook });
 
   return {
     configPath,
