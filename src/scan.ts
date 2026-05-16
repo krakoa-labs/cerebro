@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
 import { readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
@@ -8,6 +8,7 @@ import type { ExportLookup } from "./export-resolution.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
+import { findBarrelFile, resolveSourcePath } from "./source-resolution.js";
 import { type StoryBreakdown, ZERO_STORIES, analyzeStories } from "./stories-counter.js";
 import { type TestCounts, countTests } from "./tests-counter.js";
 
@@ -31,8 +32,6 @@ export interface ScanResult {
   warnings: string[];
 }
 
-const BARREL_BASENAMES = ["index.ts", "index.tsx"];
-const SOURCE_RESOLUTION_EXTS = [".tsx", ".ts"];
 const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
 const STORY_SUFFIXES = [".stories.tsx", ".stories.ts"];
 const ZERO_TESTS: TestCounts = { total: 0, skipped: 0, only: 0 };
@@ -66,7 +65,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     );
   }
 
-  const barrelPath = findExistingFile(BARREL_BASENAMES.map((name) => join(componentsRoot, name)));
+  const barrelPath = findBarrelFile(componentsRoot);
   if (barrelPath === null) {
     throw new Error(
       `No barrel file found at "${componentsPathRel}/index.ts" or "${componentsPathRel}/index.tsx".`,
@@ -161,60 +160,6 @@ function describeWarning(warning: BarrelWarning): string {
     case "default-export":
       return "skipped default export of the barrel (not supported in v1)";
   }
-}
-
-/**
- * Resolves a barrel export source to the component source file it points at.
- *
- * @param barrelDir - Absolute directory containing the barrel file.
- * @param specifier - The export source specifier from the barrel.
- * @param importedName - The imported binding name, when available.
- * @returns The resolved source file path, or `null` when no supported source
- *   file can be found.
- */
-function resolveSourcePath(
-  barrelDir: string,
-  specifier: string,
-  importedName: string | null,
-): string | null {
-  if (!specifier.startsWith(".")) return null;
-  const base = isAbsolute(specifier) ? specifier : resolve(barrelDir, specifier);
-
-  const directFile = findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => `${base}${ext}`));
-  if (directFile !== null) return directFile;
-
-  if (!statSync(base, { throwIfNoEntry: false })?.isDirectory()) return null;
-
-  // When the folder holds several sibling files (e.g. FancySelect/ contains both
-  // FancySelect.tsx and FancyAsyncSelect.tsx), the imported name disambiguates
-  // which file is the source of THIS export.
-  if (importedName !== null) {
-    const named = findExistingFile(
-      SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `${importedName}${ext}`)),
-    );
-    if (named !== null) return named;
-  }
-
-  // Prefer `X/X.tsx` over `X/index.tsx`: the folder-named file is the canonical
-  // Component source in most React DS conventions; `index.ts` is usually an
-  // inner barrel that just re-exports it.
-  const folderName = basename(base);
-  const folderNamed = findExistingFile(
-    SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `${folderName}${ext}`)),
-  );
-  if (folderNamed !== null) return folderNamed;
-
-  return findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `index${ext}`)));
-}
-
-/**
- * Finds the first existing file path in a candidate list.
- *
- * @param candidates - Absolute file paths to check in priority order.
- * @returns The first existing candidate, or `null` when none exist.
- */
-function findExistingFile(candidates: string[]): string | null {
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
 /**
