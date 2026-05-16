@@ -57,7 +57,7 @@ program
           only: acc.only + c.tests.only,
           stories: acc.stories + (c.stories?.total ?? 0),
           hasStories: acc.hasStories || c.stories !== undefined,
-          connections: acc.connections + (c.figmaConnections ?? 0),
+          connections: acc.connections + (c.figmaConnections?.length ?? 0),
           hasConnections: acc.hasConnections || c.figmaConnections !== undefined,
           deprecated: acc.deprecated + (c.deprecated ? 1 : 0),
           untyped: acc.untyped + (c.propsTyping === "untyped" ? 1 : 0),

@@ -1,11 +1,12 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
-import { countConnectionsForComponent } from "./code-connect-counter.js";
+import { type FigmaConnection, collectConnectionsForComponent } from "./code-connect-collector.js";
 import { readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
 import { detectDeprecation } from "./deprecation-detector.js";
 import type { ExportLookup } from "./export-resolution.js";
+import { readDocumentUrlSubstitutions } from "./figma-config.js";
 import { type ActivityLogEntry, type GitAvailability, inspectGit, readActivityLog } from "./git.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
@@ -27,7 +28,7 @@ export interface ScannedComponent {
   path: string;
   tests: TestCounts;
   stories?: StoryBreakdown;
-  figmaConnections?: number;
+  figmaConnections?: FigmaConnection[];
   deprecated: boolean;
   exportShape: ExportShape;
   propsTyping: PropsTyping;
@@ -124,6 +125,10 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     componentsPerDir.set(dir, (componentsPerDir.get(dir) ?? 0) + 1);
   }
 
+  const figmaSubstitutions = usesFigmaCodeConnect
+    ? readDocumentUrlSubstitutions(cwd, warnings)
+    : {};
+
   const components = resolved.map(({ exp, absolutePath, isBarrelLocal }): ScannedComponent => {
     const rel = toPosixPath(relative(cwd, absolutePath));
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
@@ -143,8 +148,8 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const figmaConnections = !usesFigmaCodeConnect
       ? undefined
       : isBarrelLocal
-        ? 0
-        : countConnectionsForComponent(absolutePath, warnings, cwd);
+        ? []
+        : collectConnectionsForComponent(absolutePath, warnings, cwd, figmaSubstitutions);
 
     const activityLog = produceActivityLog
       ? readActivityLog(cwd, gitScopeOf(absolutePath, componentsPerDir, cwd), activityLogDepth)

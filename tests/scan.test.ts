@@ -456,7 +456,7 @@ describe("scan story counting", () => {
   });
 });
 
-describe("scan Code Connect counting", () => {
+describe("scan Code Connect connections", () => {
   let cwd: string;
 
   beforeEach(() => {
@@ -471,26 +471,67 @@ describe("scan Code Connect counting", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("counts figma.connect() calls in a co-located Code Connect file", () => {
+  it("collects figma.connect() connections in a co-located Code Connect file", () => {
     writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
     writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
     writeFileSync(
       join(cwd, "src", "components", "Button.figma.tsx"),
-      `figma.connect(Button, "url-1", {});\nfigma.connect(Button, "url-2", {});`,
+      `figma.connect(Button, "https://figma.com/design/k?node-id=1-1", {});\n` +
+        `figma.connect(Button, "https://figma.com/design/k?node-id=1-2", {});`,
     );
 
     const result = scan({ cwd });
 
-    expect(result.components[0]?.figmaConnections).toBe(2);
+    expect(result.components[0]?.figmaConnections).toEqual([
+      { url: "https://figma.com/design/k?node-id=1-1" },
+      { url: "https://figma.com/design/k?node-id=1-2" },
+    ]);
   });
 
-  it("reports zero connections when no Code Connect file exists", () => {
+  it("resolves a placeholder URL through figma.config.json substitutions", () => {
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(
+      join(cwd, "src", "components", "Button.figma.tsx"),
+      `figma.connect(Button, "<FIGMA_BUTTON>", {});`,
+    );
+    writeFileSync(
+      join(cwd, "figma.config.json"),
+      JSON.stringify({
+        codeConnect: {
+          documentUrlSubstitutions: {
+            "<FIGMA_BUTTON>": "https://www.figma.com/design/abc/DS?node-id=9-9",
+          },
+        },
+      }),
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.figmaConnections).toEqual([
+      { url: "https://www.figma.com/design/abc/DS?node-id=9-9" },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("warns on a malformed figma.config.json and continues the scan", () => {
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    writeFileSync(join(cwd, "figma.config.json"), "{ not json");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.name).toBe("Button");
+    expect(result.warnings.some((w) => w.includes("failed to parse figma.config.json"))).toBe(true);
+  });
+
+  it("reports no connections when no Code Connect file exists", () => {
     writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
     writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
 
     const result = scan({ cwd });
 
-    expect(result.components[0]?.figmaConnections).toBe(0);
+    expect(result.components[0]?.figmaConnections).toEqual([]);
   });
 
   it("warns on a Code Connect file with a parse error and continues the scan", () => {
@@ -501,7 +542,7 @@ describe("scan Code Connect counting", () => {
     const result = scan({ cwd });
 
     expect(result.components[0]?.name).toBe("Broken");
-    expect(result.components[0]?.figmaConnections).toBe(0);
+    expect(result.components[0]?.figmaConnections).toEqual([]);
     expect(result.warnings.some((w) => w.includes("failed to parse Code Connect file"))).toBe(true);
   });
 
@@ -573,17 +614,29 @@ describe("scan against the storybook fixture", () => {
 });
 
 describe("scan against the code-connect fixture", () => {
-  it("counts figma.connect() calls per Component across every shape", () => {
+  it("collects figma.connect() connections per Component across every shape", () => {
     const result = scan({ cwd: FIXTURE_CODE_CONNECT });
 
     expect(
       result.components.map((c) => ({ name: c.name, figmaConnections: c.figmaConnections })),
     ).toEqual([
-      { name: "Button", figmaConnections: 2 },
-      { name: "Card", figmaConnections: 1 },
-      { name: "Pill", figmaConnections: 0 },
-      { name: "Spinner", figmaConnections: 0 },
-      { name: "Toast", figmaConnections: 1 },
+      {
+        name: "Button",
+        figmaConnections: [
+          { url: "https://figma.com/design/abc?node-id=1-1" },
+          {
+            url: "https://www.figma.com/design/abc/Buttons?node-id=1-2",
+            variant: { Size: "Large", Disabled: true },
+          },
+        ],
+      },
+      {
+        name: "Card",
+        figmaConnections: [{ url: "https://www.figma.com/design/cardKey/Cards?node-id=10-20" }],
+      },
+      { name: "Pill", figmaConnections: [] },
+      { name: "Spinner", figmaConnections: [] },
+      { name: "Toast", figmaConnections: [{ url: null }] },
     ]);
     expect(result.warnings).toEqual([]);
   });

@@ -1,6 +1,6 @@
 import figma from "@figma/code-connect";
 import { Card } from "./Card";
 
-figma.connect(Card, "https://figma.com/design/abc?node-id=2-1", {
+figma.connect(Card, "<FIGMA_CARD>", {
   example: () => Card,
 });
