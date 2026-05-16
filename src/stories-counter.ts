@@ -1,5 +1,7 @@
+import { basename, dirname, extname, join } from "node:path";
 import { Visitor } from "oxc-parser";
 import { getProp, isIdentifier, isMemberExpression, isObject } from "./ast-guards.js";
+import { foldOverCandidates } from "./candidate-fold.js";
 import { parseSource } from "./parse-source.js";
 
 export interface StoryBreakdown {
@@ -17,6 +19,8 @@ export const ZERO_STORIES: StoryBreakdown = {
   csf3: 0,
   other: 0,
 };
+
+const STORY_SUFFIXES = [".stories.tsx", ".stories.ts"];
 
 type ValueCategory = "csf2" | "csf3" | "other";
 type StoryCategory = "csf1" | ValueCategory;
@@ -60,6 +64,65 @@ export function analyzeStories(sourceText: string, filename: string): StoryBreak
   return {
     total: counts.csf1 + counts.csf2 + counts.csf3 + counts.other,
     ...counts,
+  };
+}
+
+/**
+ * Sums the CSF-generation breakdowns across every co-located stories file
+ * (`*.stories.tsx`, `*.stories.ts`) found next to a Component's source file.
+ * Missing files are skipped; read or parse errors are recorded as warnings
+ * and that file is skipped without aborting the count.
+ *
+ * @param componentSource - Absolute path to the Component's source file.
+ * @param warnings - Mutable accumulator for non-fatal warnings raised during
+ *   stories-file reads or parses.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The summed `StoryBreakdown` across all co-located stories files,
+ *   or an all-zero breakdown if no stories file exists.
+ */
+export function analyzeStoriesForComponent(
+  componentSource: string,
+  warnings: string[],
+  cwd: string,
+): StoryBreakdown {
+  return foldOverCandidates<StoryBreakdown>({
+    candidates: storyFileCandidates(componentSource),
+    zero: ZERO_STORIES,
+    label: "stories",
+    parse: analyzeStories,
+    merge: sumStoryBreakdowns,
+    warnings,
+    cwd,
+  });
+}
+
+/**
+ * Builds the supported story-file candidates for a component source file.
+ *
+ * @param componentSource - Absolute path to the component source file.
+ * @returns Co-located Storybook candidate file paths.
+ */
+function storyFileCandidates(componentSource: string): string[] {
+  const dir = dirname(componentSource);
+  const base = basename(componentSource, extname(componentSource));
+
+  return STORY_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
+}
+
+/**
+ * Sums two story breakdowns field by field.
+ *
+ * @param acc - The current accumulated story breakdown.
+ * @param next - The next story breakdown to add.
+ * @returns The combined story breakdown.
+ */
+function sumStoryBreakdowns(acc: StoryBreakdown, next: StoryBreakdown): StoryBreakdown {
+  return {
+    total: acc.total + next.total,
+    csf1: acc.csf1 + next.csf1,
+    csf2: acc.csf2 + next.csf2,
+    csf3: acc.csf3 + next.csf3,
+    other: acc.other + next.other,
   };
 }
 

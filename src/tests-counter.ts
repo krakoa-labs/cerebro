@@ -1,5 +1,7 @@
+import { basename, dirname, extname, join } from "node:path";
 import { Visitor } from "oxc-parser";
 import { isIdentifier, isMemberExpression } from "./ast-guards.js";
+import { foldOverCandidates } from "./candidate-fold.js";
 import { parseSource } from "./parse-source.js";
 
 export interface TestCounts {
@@ -8,9 +10,71 @@ export interface TestCounts {
   only: number;
 }
 
+export const ZERO_TESTS: TestCounts = { total: 0, skipped: 0, only: 0 };
+
 const TEST_FNS = new Set(["it", "test"]);
 const SKIP_PROPS = new Set(["skip", "todo"]);
 const ONLY_PROP = "only";
+
+const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
+
+/**
+ * Sums test counts across every supported test file co-located with — or in a
+ * `__tests__/` folder next to — a Component's source file. Missing files are
+ * skipped; read or parse errors are recorded as warnings and that file is
+ * skipped without aborting the count.
+ *
+ * @param componentSource - Absolute path to the Component's source file.
+ * @param warnings - Mutable accumulator for non-fatal warnings raised during
+ *   test-file reads or parses.
+ * @param cwd - Project root, used to format warning paths relative to it.
+ * @returns The summed test counts, or all-zero counts if no test file exists.
+ */
+export function countTestsForComponent(
+  componentSource: string,
+  warnings: string[],
+  cwd: string,
+): TestCounts {
+  return foldOverCandidates<TestCounts>({
+    candidates: testFileCandidates(componentSource),
+    zero: ZERO_TESTS,
+    label: "test",
+    parse: countTests,
+    merge: sumTestCounts,
+    warnings,
+    cwd,
+  });
+}
+
+/**
+ * Builds the supported test-file candidates for a component source file.
+ *
+ * @param componentSource - Absolute path to the component source file.
+ * @returns Co-located and `__tests__` candidate file paths.
+ */
+function testFileCandidates(componentSource: string): string[] {
+  const dir = dirname(componentSource);
+  const base = basename(componentSource, extname(componentSource));
+  const colocated = TEST_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
+  const subfolder = TEST_SUFFIXES.map((suffix) => join(dir, "__tests__", `${base}${suffix}`));
+
+  return [...colocated, ...subfolder];
+}
+
+/**
+ * Sums two test-count objects field by field.
+ *
+ * @param acc - The current accumulated test counts.
+ * @param next - The next test counts to add.
+ * @returns The combined test counts.
+ */
+function sumTestCounts(acc: TestCounts, next: TestCounts): TestCounts {
+  return {
+    total: acc.total + next.total,
+    skipped: acc.skipped + next.skipped,
+    only: acc.only + next.only,
+  };
+}
 
 /**
  * Parses a test file and counts the test cases declared in it.

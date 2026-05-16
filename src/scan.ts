@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
 import { readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
@@ -9,8 +9,12 @@ import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
 import { findBarrelFile, resolveSourcePath } from "./source-resolution.js";
-import { type StoryBreakdown, ZERO_STORIES, analyzeStories } from "./stories-counter.js";
-import { type TestCounts, countTests } from "./tests-counter.js";
+import {
+  type StoryBreakdown,
+  ZERO_STORIES,
+  analyzeStoriesForComponent,
+} from "./stories-counter.js";
+import { type TestCounts, ZERO_TESTS, countTestsForComponent } from "./tests-counter.js";
 
 export interface ScanOptions {
   cwd: string;
@@ -31,10 +35,6 @@ export interface ScanResult {
   components: ScannedComponent[];
   warnings: string[];
 }
-
-const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
-const STORY_SUFFIXES = [".stories.tsx", ".stories.ts"];
-const ZERO_TESTS: TestCounts = { total: 0, skipped: 0, only: 0 };
 
 /**
  * Reads the project config and scans the design system's components root,
@@ -160,165 +160,6 @@ function describeWarning(warning: BarrelWarning): string {
     case "default-export":
       return "skipped default export of the barrel (not supported in v1)";
   }
-}
-
-/**
- * Builds the supported test-file candidates for a component source file.
- *
- * @param componentSource - Absolute path to the component source file.
- * @returns Co-located and `__tests__` candidate file paths.
- */
-function testFileCandidates(componentSource: string): string[] {
-  const dir = dirname(componentSource);
-  const base = basename(componentSource, extname(componentSource));
-  const colocated = TEST_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
-  const subfolder = TEST_SUFFIXES.map((suffix) => join(dir, "__tests__", `${base}${suffix}`));
-
-  return [...colocated, ...subfolder];
-}
-
-/**
- * Builds the supported story-file candidates for a component source file.
- *
- * @param componentSource - Absolute path to the component source file.
- * @returns Co-located Storybook candidate file paths.
- */
-function storyFileCandidates(componentSource: string): string[] {
-  const dir = dirname(componentSource);
-  const base = basename(componentSource, extname(componentSource));
-
-  return STORY_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
-}
-
-interface FoldOptions<T> {
-  candidates: string[];
-  zero: T;
-  label: string;
-  parse: (text: string, candidate: string) => T;
-  merge: (acc: T, next: T) => T;
-  warnings: string[];
-  cwd: string;
-}
-
-/**
- * Folds a parsed-and-merged result over a list of candidate file paths.
- * Missing files are silently skipped; read or parse errors are recorded as
- * warnings (using `label` to compose the message) and the candidate is
- * skipped without aborting the fold.
- *
- * @param opts - The fold configuration.
- * @returns The merged result over all parseable candidate files.
- */
-function foldOverCandidates<T>(opts: FoldOptions<T>): T {
-  const { candidates, zero, label, parse, merge, warnings, cwd } = opts;
-  return candidates.reduce<T>((acc, candidate) => {
-    if (!existsSync(candidate)) return acc;
-
-    const text = ((): string | null => {
-      try {
-        return readFileSync(candidate, "utf8");
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-        const rel = toPosixPath(relative(cwd, candidate));
-        warnings.push(`failed to read ${label} file "${rel}": ${(err as Error).message}`);
-        return null;
-      }
-    })();
-
-    if (text === null) return acc;
-
-    try {
-      return merge(acc, parse(text, candidate));
-    } catch (err) {
-      const rel = toPosixPath(relative(cwd, candidate));
-      warnings.push(`failed to parse ${label} file "${rel}": ${(err as Error).message}`);
-      return acc;
-    }
-  }, zero);
-}
-
-/**
- * Sums the CSF-generation breakdowns across every co-located stories file
- * (`*.stories.tsx`, `*.stories.ts`) found next to a Component's source file.
- *
- * @param componentSource - Absolute path to the Component's source file.
- * @param warnings - Mutable accumulator for non-fatal warnings raised during
- *   stories-file reads or parses.
- * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The summed `StoryBreakdown` across all co-located stories files,
- *   or an all-zero breakdown if no stories file exists.
- */
-function analyzeStoriesForComponent(
-  componentSource: string,
-  warnings: string[],
-  cwd: string,
-): StoryBreakdown {
-  return foldOverCandidates<StoryBreakdown>({
-    candidates: storyFileCandidates(componentSource),
-    zero: ZERO_STORIES,
-    label: "stories",
-    parse: analyzeStories,
-    merge: sumStoryBreakdowns,
-    warnings,
-    cwd,
-  });
-}
-
-/**
- * Sums two story breakdowns field by field.
- *
- * @param acc - The current accumulated story breakdown.
- * @param next - The next story breakdown to add.
- * @returns The combined story breakdown.
- */
-function sumStoryBreakdowns(acc: StoryBreakdown, next: StoryBreakdown): StoryBreakdown {
-  return {
-    total: acc.total + next.total,
-    csf1: acc.csf1 + next.csf1,
-    csf2: acc.csf2 + next.csf2,
-    csf3: acc.csf3 + next.csf3,
-    other: acc.other + next.other,
-  };
-}
-
-/**
- * Sums test counts across every supported test candidate for a component.
- *
- * @param componentSource - Absolute path to the Component's source file.
- * @param warnings - Mutable accumulator for non-fatal warnings raised during
- *   test-file reads or parses.
- * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The summed test counts, or all-zero counts if no test file exists.
- */
-function countTestsForComponent(
-  componentSource: string,
-  warnings: string[],
-  cwd: string,
-): TestCounts {
-  return foldOverCandidates<TestCounts>({
-    candidates: testFileCandidates(componentSource),
-    zero: ZERO_TESTS,
-    label: "test",
-    parse: countTests,
-    merge: sumTestCounts,
-    warnings,
-    cwd,
-  });
-}
-
-/**
- * Sums two test-count objects field by field.
- *
- * @param acc - The current accumulated test counts.
- * @param next - The next test counts to add.
- * @returns The combined test counts.
- */
-function sumTestCounts(acc: TestCounts, next: TestCounts): TestCounts {
-  return {
-    total: acc.total + next.total,
-    skipped: acc.skipped + next.skipped,
-    only: acc.only + next.only,
-  };
 }
 
 /**
