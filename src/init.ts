@@ -1,6 +1,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { CONFIG_FILENAME, writeConfig } from "./config.js";
+import { CONFIG_FILENAME, DEFAULT_ACTIVITY_LOG_DEPTH, writeConfig } from "./config.js";
+import { detectGitRepo } from "./git.js";
 import { toPosixPath } from "./paths.js";
 
 export interface InitOptions {
@@ -12,6 +13,7 @@ export interface InitResult {
   configPath: string;
   componentsPath: string;
   usesStorybook: boolean;
+  tracksActivityLog: boolean;
   warnings: string[];
 }
 
@@ -64,8 +66,8 @@ export function detectComponentsPath(cwd: string): string | null {
  *   relative to `cwd`. Absolute paths are normalized to a path relative to
  *   `cwd` before being written to the config.
  * @returns The resolved config path, the normalized components path, whether
- *   Storybook was detected at `cwd`, and any non-fatal warnings produced during
- *   validation.
+ *   Storybook was detected at `cwd`, whether `cwd` is a git repository, and any
+ *   non-fatal warnings produced during validation.
  * @throws If `componentsPath` does not exist, is not a directory, or is outside
  *   the project root.
  * @throws If `cerebro.config.json` already exists in `cwd`.
@@ -93,13 +95,20 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
     readdirSync(absoluteTarget).length === 0 ? [`directory "${normalized}" is empty`] : [];
 
   const usesStorybook = detectStorybook(cwd);
+  const tracksActivityLog = detectGitRepo(cwd);
 
-  writeConfig(cwd, { componentsPath: normalized, usesStorybook });
+  writeConfig(cwd, {
+    componentsPath: normalized,
+    usesStorybook,
+    tracksActivityLog,
+    activityLogDepth: DEFAULT_ACTIVITY_LOG_DEPTH,
+  });
 
   return {
     configPath,
     componentsPath: normalized,
     usesStorybook,
+    tracksActivityLog,
     warnings,
   };
 }

@@ -5,6 +5,7 @@ import { readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
 import { detectDeprecation } from "./deprecation-detector.js";
 import type { ExportLookup } from "./export-resolution.js";
+import { type ActivityLogEntry, type GitAvailability, inspectGit, readActivityLog } from "./git.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
@@ -29,11 +30,13 @@ export interface ScannedComponent {
   exportShape: ExportShape;
   propsTyping: PropsTyping;
   definitionKind: DefinitionKind;
+  activityLog?: ActivityLogEntry[];
 }
 
 export interface ScanResult {
   components: ScannedComponent[];
   warnings: string[];
+  git: GitAvailability;
 }
 
 /**
@@ -43,13 +46,18 @@ export interface ScanResult {
  * @param options - The scan options.
  * @param options.cwd - The project root directory.
  * @returns The alphabetically-sorted list of Components with their source
- *   paths relative to `cwd`, plus any non-fatal warnings produced during the
- *   scan.
+ *   paths relative to `cwd`, any non-fatal warnings produced during the scan,
+ *   and the git availability of the scanned project.
  * @throws If the config is missing, invalid, or points to a non-existent
  *   components root, or if no barrel index file is found.
  */
 export function scan({ cwd }: ScanOptions): ScanResult {
-  const { componentsPath: componentsPathRel, usesStorybook } = readConfig(cwd);
+  const {
+    componentsPath: componentsPathRel,
+    usesStorybook,
+    tracksActivityLog,
+    activityLogDepth,
+  } = readConfig(cwd);
 
   const componentsRoot = resolve(cwd, componentsPathRel);
   const rootStat = statSync(componentsRoot, { throwIfNoEntry: false });
@@ -81,7 +89,19 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   const barrelDir = dirname(barrelPath);
   const warnings: string[] = [...parseWarnings];
 
-  const components = parsed.exports.flatMap((exp): ScannedComponent[] => {
+  const git = inspectGit(cwd);
+  if (tracksActivityLog && !git.available) {
+    warnings.push("activity log requested but the project is not a git repository");
+  }
+  if (tracksActivityLog && git.shallow) {
+    warnings.push("shallow clone — activity log may be truncated");
+  }
+  const produceActivityLog = tracksActivityLog && git.available;
+
+  // Resolve every export to its source file first: a Component's Git scope
+  // depends on how many Components share its directory, which is only known
+  // once the whole barrel has been resolved.
+  const resolved = parsed.exports.flatMap((exp) => {
     const isBarrelLocal = exp.shape === "barrel-local";
     const absolutePath = isBarrelLocal
       ? barrelPath
@@ -92,6 +112,16 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       return [];
     }
 
+    return [{ exp, absolutePath, isBarrelLocal }];
+  });
+
+  const componentsPerDir = new Map<string, number>();
+  for (const { absolutePath } of resolved) {
+    const dir = dirname(absolutePath);
+    componentsPerDir.set(dir, (componentsPerDir.get(dir) ?? 0) + 1);
+  }
+
+  const components = resolved.map(({ exp, absolutePath, isBarrelLocal }): ScannedComponent => {
     const rel = toPosixPath(relative(cwd, absolutePath));
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
 
@@ -101,35 +131,27 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const propsTyping = source === null ? "unanalyzed" : detectPropsTyping(source, lookup);
     const definitionKind = source === null ? "unanalyzed" : detectDefinitionKind(source, lookup);
 
-    if (!usesStorybook)
-      return [
-        {
-          name: exp.name,
-          path: rel,
-          tests,
-          deprecated,
-          exportShape: exp.shape,
-          propsTyping,
-          definitionKind,
-        },
-      ];
+    const stories = !usesStorybook
+      ? undefined
+      : isBarrelLocal
+        ? ZERO_STORIES
+        : analyzeStoriesForComponent(absolutePath, warnings, cwd);
 
-    const stories = isBarrelLocal
-      ? ZERO_STORIES
-      : analyzeStoriesForComponent(absolutePath, warnings, cwd);
+    const activityLog = produceActivityLog
+      ? readActivityLog(cwd, gitScopeOf(absolutePath, componentsPerDir, cwd), activityLogDepth)
+      : undefined;
 
-    return [
-      {
-        name: exp.name,
-        path: rel,
-        tests,
-        stories,
-        deprecated,
-        exportShape: exp.shape,
-        propsTyping,
-        definitionKind,
-      },
-    ];
+    return {
+      name: exp.name,
+      path: rel,
+      tests,
+      deprecated,
+      exportShape: exp.shape,
+      propsTyping,
+      definitionKind,
+      ...(stories !== undefined ? { stories } : {}),
+      ...(activityLog !== undefined ? { activityLog } : {}),
+    };
   });
 
   const sortedComponents = components.toSorted((a, b) =>
@@ -142,7 +164,27 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     warnings.push(`barrel "${barrelRel}" has no named exports`);
   }
 
-  return { components: sortedComponents, warnings };
+  return { components: sortedComponents, warnings, git };
+}
+
+/**
+ * Resolves a Component's Git scope — the path its activity log is read over.
+ * The scope is the Component's directory when that Component alone resolves
+ * its source file there, and the source file itself otherwise.
+ *
+ * @param absolutePath - The Component's resolved source file.
+ * @param componentsPerDir - Count of Components resolving into each directory.
+ * @param cwd - Project root, used to format the scope relative to it.
+ * @returns The Git scope path, relative to `cwd`.
+ */
+function gitScopeOf(
+  absolutePath: string,
+  componentsPerDir: Map<string, number>,
+  cwd: string,
+): string {
+  const dir = dirname(absolutePath);
+  const scope = componentsPerDir.get(dir) === 1 ? dir : absolutePath;
+  return toPosixPath(relative(cwd, scope));
 }
 
 /**

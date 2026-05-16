@@ -3,17 +3,23 @@ import { resolve } from "node:path";
 
 export const CONFIG_FILENAME = "cerebro.config.json";
 
+/** The activity log depth applied when the config does not specify one. */
+export const DEFAULT_ACTIVITY_LOG_DEPTH = 20;
+
 export interface CerebroConfig {
   componentsPath: string;
   usesStorybook: boolean;
+  tracksActivityLog: boolean;
+  activityLogDepth: number;
 }
 
 /**
  * Reads, parses, and validates the Cerebro config file at the root of `cwd`.
  *
  * @param cwd - The project root directory.
- * @returns The validated config: the components path and the Storybook flag
- *   (an absent `usesStorybook` is normalized to `false`).
+ * @returns The validated config: the components path, the Storybook flag, the
+ *   activity-log tracking flag, and the activity log depth (absent boolean
+ *   flags are normalized to `false`, an absent depth to its default).
  * @throws If the config file is missing, is not valid JSON, or has a shape
  *   that does not match the expected config.
  */
@@ -76,7 +82,8 @@ export function writeConfig(cwd: string, config: CerebroConfig): void {
  * Validates the raw JSON config payload and returns the normalized config.
  *
  * @param raw - The parsed JSON config value.
- * @returns The validated components path and Storybook flag.
+ * @returns The validated components path, Storybook flag, activity-log
+ *   tracking flag, and activity log depth.
  * @throws If the config shape is invalid.
  */
 function validateConfig(raw: unknown): CerebroConfig {
@@ -101,5 +108,26 @@ function validateConfig(raw: unknown): CerebroConfig {
     );
   }
 
-  return { componentsPath: cp, usesStorybook: usb === true };
+  const tal = (raw as { tracksActivityLog?: unknown }).tracksActivityLog;
+  if (tal !== undefined && typeof tal !== "boolean") {
+    throw new Error(
+      `${CONFIG_FILENAME} has an invalid "tracksActivityLog" field: expected boolean, got ${typeof tal}.`,
+    );
+  }
+
+  const ald = (raw as { activityLogDepth?: unknown }).activityLogDepth;
+  if (ald !== undefined && (typeof ald !== "number" || !Number.isInteger(ald) || ald < 1)) {
+    throw new Error(
+      `${CONFIG_FILENAME} has an invalid "activityLogDepth" field: expected a positive integer, got ${
+        typeof ald === "number" ? ald : typeof ald
+      }.`,
+    );
+  }
+
+  return {
+    componentsPath: cp,
+    usesStorybook: usb === true,
+    tracksActivityLog: tal === true,
+    activityLogDepth: ald === undefined ? DEFAULT_ACTIVITY_LOG_DEPTH : ald,
+  };
 }

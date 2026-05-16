@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -156,6 +157,16 @@ describe("scan", () => {
       },
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  it("reports git availability for the scanned project", () => {
+    writeConfig(cwd, "src/components");
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+
+    const result = scan({ cwd });
+
+    expect(result.git).toEqual({ available: false, shallow: false });
   });
 
   it("warns on a wildcard export and skips it, without a 'no named exports' warning", () => {
@@ -564,6 +575,109 @@ describe("scan source parsing", () => {
     expect(broken?.propsTyping).toBe("unanalyzed");
     expect(broken?.definitionKind).toBe("unanalyzed");
     expect(result.warnings.filter((w) => w.includes("failed to parse source"))).toHaveLength(1);
+  });
+});
+
+describe("scan activity log", () => {
+  let cwd: string;
+
+  // Pin the commit identity via environment variables: they outrank any GIT_*
+  // vars a surrounding git hook may export into the test process.
+  const commitEnv = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Dev",
+    GIT_AUTHOR_EMAIL: "dev@example.com",
+    GIT_COMMITTER_NAME: "Dev",
+    GIT_COMMITTER_EMAIL: "dev@example.com",
+  };
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-log-"));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  function writeTrackingConfig(): void {
+    writeFileSync(
+      join(cwd, CONFIG_FILENAME),
+      JSON.stringify({ componentsPath: "src/components", tracksActivityLog: true }),
+    );
+  }
+
+  function commitAll(message: string): void {
+    spawnSync("git", ["add", "."], { cwd });
+    spawnSync("git", ["commit", "-m", message], { cwd, env: commitEnv });
+  }
+
+  it("attaches an activity log when tracking is on and the project is a git repo", () => {
+    spawnSync("git", ["init"], { cwd });
+    writeTrackingConfig();
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    commitAll("add Button");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.activityLog?.map((e) => e.subject)).toEqual(["add Button"]);
+  });
+
+  it("omits the activity log when tracking is off", () => {
+    spawnSync("git", ["init"], { cwd });
+    writeConfig(cwd, "src/components");
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    commitAll("add Button");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]).not.toHaveProperty("activityLog");
+  });
+
+  it("omits the activity log and warns when tracking is on but not a git repo", () => {
+    writeTrackingConfig();
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]).not.toHaveProperty("activityLog");
+    expect(result.warnings.some((w) => w.includes("not a git repository"))).toBe(true);
+  });
+
+  it("scopes the log to the folder for a lone Component and to the file for siblings", () => {
+    spawnSync("git", ["init"], { cwd });
+    writeTrackingConfig();
+    writeBarrel(
+      cwd,
+      "src/components",
+      [
+        `export { Solo } from "./Solo";`,
+        `export { PairA } from "./pair/PairA";`,
+        `export { PairB } from "./pair/PairB";`,
+      ].join("\n"),
+    );
+    mkdirSync(join(cwd, "src", "components", "Solo"));
+    writeFileSync(join(cwd, "src", "components", "Solo", "Solo.tsx"), "");
+    mkdirSync(join(cwd, "src", "components", "pair"));
+    writeFileSync(join(cwd, "src", "components", "pair", "PairA.tsx"), "");
+    writeFileSync(join(cwd, "src", "components", "pair", "PairB.tsx"), "");
+    commitAll("scaffold");
+
+    writeFileSync(join(cwd, "src", "components", "Solo", "Solo.styles.ts"), "");
+    commitAll("tweak Solo styles");
+
+    writeFileSync(join(cwd, "src", "components", "pair", "PairA.tsx"), "// changed");
+    commitAll("tweak PairA");
+
+    const result = scan({ cwd });
+    const subjectsOf = (name: string): string[] | undefined =>
+      result.components.find((c) => c.name === name)?.activityLog?.map((e) => e.subject);
+
+    expect(subjectsOf("Solo")).toEqual(["tweak Solo styles", "scaffold"]);
+    expect(subjectsOf("PairA")).toEqual(["tweak PairA", "scaffold"]);
+    expect(subjectsOf("PairB")).toEqual(["scaffold"]);
   });
 });
 

@@ -1,6 +1,6 @@
 # Cerebro
 
-Cerebro is an open-source CLI that scans React/TypeScript design systems and produces deterministic indicators describing their inventory, internal quality, and history. The indicators are intended to feed a future web dashboard and to help design system teams make informed decisions about adoption, migration, and maintenance.
+Cerebro is an open-source CLI that scans React/TypeScript design systems and produces deterministic indicators describing their inventory and internal quality, plus a per-Component activity log drawn from git history. These outputs are intended to feed a future web dashboard and to help design system teams make informed decisions about adoption, migration, and maintenance.
 
 ## Language
 
@@ -40,6 +40,18 @@ _Avoid_: Export type (overloaded with TypeScript "type" and ambiguous with sourc
 A categorical Indicator per Component describing whether the Component's props carry a TypeScript type annotation. Values: `typed` (a type annotation governs the props — a parameter annotation, or the props generic argument of an `FC`/`forwardRef`/`memo` form; a Component that accepts no props is also `typed`, its contract being trivially complete), `untyped` (a function-component declaration with a props parameter was found and no annotation governs it), `unanalyzed` (no analyzable function-component declaration could be identified — deeply-wrapped HOCs, class components, barrel-local non-components, and shapes not yet supported all fall here). Reports only the *presence* of a type annotation, not its soundness: `props: any` counts as `typed`.
 _Avoid_: Typed props (implies a settled boolean), Props coverage (suggests a percentage like test coverage), Type safety (a verdict — Props typing does not judge `any` or weak types)
 
+**Activity log**:
+A per-Component category of scan output — the list, newest first by committer date, of the most recent commits that touched the Component's Git scope. An Activity log is *not* an Indicator: it is raw recorded git history handed to a consumer (such as the future dashboard) to interpret, not a derived verdict that surfaces a decision on its own. Each entry carries the commit's full SHA, committer date, author name and email, and subject. The number of commits is a fixed count (default 20, configurable via `activityLogDepth`) and deliberately not a time window — a wall-clock window would make a Scan depend on the day it runs and break its determinism, so date-based views are left to the consumer.
+_Avoid_: Commit history, changelog, git log, "history" (too vague — names the source, not the output)
+
+**Git scope**:
+The path a Component's Activity log is computed over: the Component's directory when that Component alone resolves its source file there, otherwise the source file by itself. The directory form folds in commits to co-located styles and internal subcomponents; the file fallback keeps the scope unambiguous when several Components share a directory.
+_Avoid_: Component path (that term names the resolved source file specifically), component folder
+
+**Activity log tracking**:
+A persisted attribute of a Design system recording whether the team wants Activity logs computed. Recorded as `tracksActivityLog` in `cerebro.config.json`, defaulted at init from whether the project is a git repository. Gates the Activity log, which is *additionally* gated at scan time by actual git availability — git presence is an environmental fact, not committed code, so a persisted flag alone cannot guarantee it.
+_Avoid_: Git usage (the attribute is about wanting the output, not about using git)
+
 **Fixture**:
 A minimal fake design system kept under `fixtures/` whose sole purpose is to exercise a specific shape Cerebro must handle. Each fixture is paired with at least one test that asserts the expected indicators.
 _Avoid_: Example (implies user-facing demo), sample, test data
@@ -60,11 +72,16 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - A **Component** carries a **Deprecation** indicator, derived from the `@deprecated` JSDoc tag on its source declaration
 - A **Component** carries an **Export shape** indicator, derived from the barrel statement that publishes it
 - A **Component** carries a **Props typing** indicator, derived from the type annotation governing its props parameter (or its absence)
+- A **Component** carries an **Activity log**, the recent commits touching its **Git scope** — produced only when **Activity log tracking** is on and the **Design system** is a git repository
+- **Activity log tracking** is an attribute of a **Design system**, set at init time from git detection, that gates the **Activity log**
 
 ## Example dialogue
 
 > **Lead DS:** "What do you mean by **indicator** — is that the same as a metric we'd see on a dashboard?"
 > **Dev:** "An **indicator** is the deterministic output of a **scan** — for example 'Button is exported from three locations in this **design system**'. It's derived from static analysis and git history, so the same codebase always produces the same indicators. That's the whole point: no telemetry, no runtime sampling."
+>
+> **Lead DS:** "Then can the **Activity log** tell me which Components are going stale?"
+> **Dev:** "Not on its own — an **Activity log** is just the raw recent commits for a Component, it doesn't judge. The dashboard can derive 'stale' from the commit dates. If we wanted Cerebro itself to verdict on staleness, that would be a new **Indicator**, separate from the log."
 
 ## Flagged ambiguities
 
@@ -72,3 +89,5 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - "component" was initially ambiguous between three possible definitions: (a) what the design system publicly exports, (b) every React function/class declared in source, or (c) every PascalCase file under the components root. Resolved: a **Component** is (a). Things matching (b) or (c) but not exposed via the public barrel are **internal entities**, tracked separately by a future indicator (planned: "internal component not exported", not implemented yet).
 - "export type" / "type d'export" was initially ambiguous between (a) the form of the *publication statement in the barrel* and (b) the form of the *export at the source file* (named vs default, `function` vs `const`, etc.). Resolved as (a), now named **Export shape**. The source-file form is excluded because it is a pure code-style question (the file's choice of `export function` vs `export const`), not a substantive property of the Component — that level of source-style consistency is a linter's job, not Cerebro's. General rule that fell out of this discussion: Cerebro indicators measure substantive properties of a Component — quality, status, exposure, technical debt — including internal signals invisible to consumers (tests, stories). Code-style consistency questions are deferred to linters.
 - "props typing" was initially entangled with props *quality* — resolved: **Props typing** reports only whether a type annotation is *present*, not whether it is sound. Whether a prop type is `any` or otherwise weak is a separate, deferred indicator. Consistent with the Export shape rule: an indicator measures one substantive property and does not bundle a quality verdict.
+- "history" was ambiguous between (a) a raw list of recent commits and (b) a derived verdict about activity or staleness. Resolved: the raw list is an **Activity log**, deliberately *not* an Indicator — "Indicator" stays reserved for derived deterministic values that surface a decision. A staleness or churn verdict, if ever needed, would be a separate future Indicator built on top of the log.
+- a time-windowed activity log ("commits in the last 90 days") was considered and rejected: a wall-clock window makes a **Scan**'s output depend on the date it runs — the same repository state would yield a different log a month later — which contradicts the determinism that defines a Scan. The **Activity log** is a fixed count instead; date filtering is left to the consumer, which can use the committer date on each entry.

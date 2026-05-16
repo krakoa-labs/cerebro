@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,10 +28,16 @@ describe("init", () => {
 
     expect(result.componentsPath).toBe("src/components");
     expect(result.usesStorybook).toBe(false);
+    expect(result.tracksActivityLog).toBe(false);
     expect(result.warnings).toEqual([]);
 
     const config = JSON.parse(readFileSync(join(cwd, CONFIG_FILENAME), "utf8"));
-    expect(config).toEqual({ componentsPath: "src/components", usesStorybook: false });
+    expect(config).toEqual({
+      componentsPath: "src/components",
+      usesStorybook: false,
+      tracksActivityLog: false,
+      activityLogDepth: 20,
+    });
   });
 
   it("records usesStorybook: true when a .storybook directory exists at cwd", () => {
@@ -44,7 +51,25 @@ describe("init", () => {
     expect(result.usesStorybook).toBe(true);
 
     const config = JSON.parse(readFileSync(join(cwd, CONFIG_FILENAME), "utf8"));
-    expect(config).toEqual({ componentsPath: "src/components", usesStorybook: true });
+    expect(config).toEqual({
+      componentsPath: "src/components",
+      usesStorybook: true,
+      tracksActivityLog: false,
+      activityLogDepth: 20,
+    });
+  });
+
+  it("records tracksActivityLog: true when cwd is a git repository", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    spawnSync("git", ["init"], { cwd });
+
+    const result = init({ cwd, componentsPath: "src/components" });
+
+    expect(result.tracksActivityLog).toBe(true);
+
+    const config = JSON.parse(readFileSync(join(cwd, CONFIG_FILENAME), "utf8"));
+    expect(config.tracksActivityLog).toBe(true);
   });
 
   it("normalizes absolute paths to relative", () => {

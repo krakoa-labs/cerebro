@@ -25,6 +25,9 @@ program
 
       console.log(pc.cyan(`Storybook: ${result.usesStorybook ? "detected" : "not detected"}`));
       console.log(
+        pc.cyan(`Git repository: ${result.tracksActivityLog ? "detected" : "not detected"}`),
+      );
+      console.log(
         pc.green(`Created ${CONFIG_FILENAME} (componentsPath: ${result.componentsPath})`),
       );
     } catch (err) {
@@ -76,9 +79,14 @@ program
       const classNoun = totals.classComponents === 1 ? "component" : "components";
       const classFragment =
         totals.classComponents > 0 ? ` ${totals.classComponents} class ${classNoun}.` : "";
+      const gitFragment = result.git.available
+        ? result.git.shallow
+          ? " Git: shallow repository."
+          : " Git: repository."
+        : " Git: not a repository.";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}${untypedFragment}${classFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${deprecatedFragment}${untypedFragment}${classFragment}${gitFragment}\n`,
         ),
       );
 

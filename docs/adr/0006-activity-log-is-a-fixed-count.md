@@ -1,0 +1,5 @@
+# The Activity log is a fixed count, not a time window
+
+A Component's Activity log is the last N commits (default 20, configurable via `activityLogDepth`), never the commits within a time window. A wall-clock window such as "the last 90 days" would make a Scan's output depend on the date it runs — the same repository state, scanned a month later with no new commits, would produce a different log — which breaks the determinism that defines a Scan. A HEAD-anchored window ("90 days before the latest commit") would preserve determinism, but was rejected as a redundant second concept: every Activity log entry carries a committer date, so a consumer (e.g. the future dashboard) can filter by date itself. Cerebro therefore never reads the wall clock.
+
+Accepted consequence: a Component with heavy churn can have commits fall off the end of its Activity log that a time window would have retained. `activityLogDepth` is configurable to mitigate this; the determinism guarantee is judged worth the trade.
