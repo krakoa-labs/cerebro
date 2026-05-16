@@ -434,29 +434,6 @@ describe("scan story counting", () => {
   });
 });
 
-describe("scan props typing", () => {
-  let cwd: string;
-
-  beforeEach(() => {
-    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-props-"));
-    writeConfig(cwd, "src/components");
-  });
-
-  afterEach(() => {
-    rmSync(cwd, { recursive: true, force: true });
-  });
-
-  it("warns on a source file with a parse error and reports unanalyzed", () => {
-    writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
-    writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "export const Broken = (props: ");
-
-    const result = scan({ cwd });
-
-    expect(result.components[0]?.propsTyping).toBe("unanalyzed");
-    expect(result.warnings.some((w) => w.includes("for props-typing check"))).toBe(true);
-  });
-});
-
 describe("scan against the props-typing fixture", () => {
   it("classifies props typing across every supported shape", () => {
     const result = scan({ cwd: FIXTURE_PROPS_TYPING });
@@ -564,11 +541,11 @@ describe("scan against the barrel-basics fixture", () => {
   });
 });
 
-describe("scan definition kind", () => {
+describe("scan source parsing", () => {
   let cwd: string;
 
   beforeEach(() => {
-    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-defkind-"));
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-parsing-"));
     writeConfig(cwd, "src/components");
   });
 
@@ -576,14 +553,17 @@ describe("scan definition kind", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("warns on a source file with a parse error and reports unanalyzed", () => {
+  it("reports a single warning when a component source fails to parse", () => {
     writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
     writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "export const Broken = (props: ");
 
     const result = scan({ cwd });
 
-    expect(result.components[0]?.definitionKind).toBe("unanalyzed");
-    expect(result.warnings.some((w) => w.includes("for definition-kind check"))).toBe(true);
+    const broken = result.components[0];
+    expect(broken?.deprecated).toBe(false);
+    expect(broken?.propsTyping).toBe("unanalyzed");
+    expect(broken?.definitionKind).toBe("unanalyzed");
+    expect(result.warnings.filter((w) => w.includes("failed to parse source"))).toHaveLength(1);
   });
 });
 

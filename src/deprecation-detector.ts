@@ -1,6 +1,6 @@
 import type { Comment } from "oxc-parser";
 import { getProp, isIdentifier } from "./ast-guards.js";
-import { type ParsedSource, parseSource } from "./parse-source.js";
+import type { ParsedSource } from "./parse-source.js";
 
 export type DeprecationLookup = { kind: "default" } | { kind: "named"; name: string };
 
@@ -17,23 +17,15 @@ const DEPRECATED_TAG = /^\s*\*?\s*@deprecated\b/m;
  * export cannot be traced to a declaration (e.g. `export default forwardRef(...)`)
  * yield `false`.
  *
- * @param sourceText - The source file contents.
- * @param filename - The source file path. Its extension selects the parser
- *   language (`.tsx` vs `.ts`).
+ * @param source - The parsed source file to inspect.
  * @param lookup - Which export to inspect: `default`, or a named export.
  * @returns `true` when a leading JSDoc on the resolved declaration contains
  *   `@deprecated`; `false` otherwise.
- * @throws If `oxc-parser` reports a fatal parse error on the source.
  */
-export function detectDeprecation(
-  sourceText: string,
-  filename: string,
-  lookup: DeprecationLookup,
-): boolean {
-  const parsed = parseSource(sourceText, filename);
-  const declStart = findDeclarationStart(parsed, lookup);
+export function detectDeprecation(source: ParsedSource, lookup: DeprecationLookup): boolean {
+  const declStart = findDeclarationStart(source, lookup);
   if (declStart === null) return false;
-  return hasLeadingDeprecatedJsdoc(parsed.comments, sourceText, declStart);
+  return hasLeadingDeprecatedJsdoc(source.comments, source.text, declStart);
 }
 
 /**

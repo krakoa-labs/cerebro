@@ -1,5 +1,5 @@
 import { getProp, isIdentifier, isMemberExpression } from "./ast-guards.js";
-import { parseSource } from "./parse-source.js";
+import type { ParsedSource } from "./parse-source.js";
 
 export type PropsTyping = "typed" | "untyped" | "unanalyzed";
 
@@ -34,20 +34,12 @@ type ComponentFunction =
  * identified (class components, deeply-wrapped HOCs, barrel-local
  * non-components, and shapes not yet supported).
  *
- * @param sourceText - The source file contents.
- * @param filename - The source file path. Its extension selects the parser
- *   language (`.tsx` vs `.ts`).
+ * @param source - The parsed source file to inspect.
  * @param lookup - Which export to inspect: `default`, or a named export.
  * @returns The props-typing classification for the resolved Component.
- * @throws If `oxc-parser` reports a fatal parse error on the source.
  */
-export function detectPropsTyping(
-  sourceText: string,
-  filename: string,
-  lookup: PropsLookup,
-): PropsTyping {
-  const parsed = parseSource(sourceText, filename);
-  const body = getProp(parsed.program, "body");
+export function detectPropsTyping(source: ParsedSource, lookup: PropsLookup): PropsTyping {
+  const body = getProp(source.program, "body");
   if (!Array.isArray(body)) return "unanalyzed";
 
   const exported = resolveExportedValue(body, lookup);

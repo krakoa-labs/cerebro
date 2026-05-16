@@ -4,6 +4,7 @@ import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } 
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
 import { type DeprecationLookup, detectDeprecation } from "./deprecation-detector.js";
 import { CONFIG_FILENAME } from "./init.js";
+import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
 import { type StoryBreakdown, ZERO_STORIES, analyzeStories } from "./stories-counter.js";
@@ -114,9 +115,12 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 
     const rel = toPosixPath(relative(cwd, absolutePath));
     const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
-    const deprecated = deprecationOf(absolutePath, exp, warnings, cwd);
-    const propsTyping = propsTypingOf(absolutePath, exp, warnings, cwd);
-    const definitionKind = definitionKindOf(absolutePath, exp, warnings, cwd);
+
+    const source = readAndParseSource(absolutePath, warnings, cwd);
+    const lookup = lookupFor(exp);
+    const deprecated = source === null ? false : detectDeprecation(source, lookup);
+    const propsTyping = source === null ? "unanalyzed" : detectPropsTyping(source, lookup);
+    const definitionKind = source === null ? "unanalyzed" : detectDefinitionKind(source, lookup);
 
     if (!usesStorybook)
       return [
@@ -425,40 +429,6 @@ function sumTestCounts(acc: TestCounts, next: TestCounts): TestCounts {
 }
 
 /**
- * Computes the deprecation flag for a single Component by inspecting the
- * leading JSDoc on the declaration its barrel export resolves to. Read or
- * parse failures are recorded as warnings and the Component is reported as
- * non-deprecated. For barrel-local Components the file is the barrel itself;
- * the small redundant read is dominated by the parse cost the check incurs.
- *
- * @param absolutePath - Absolute path of the file containing the declaration.
- * @param exp - The barrel-parsed export, used to determine what to look up.
- * @param warnings - Mutable accumulator for non-fatal warnings.
- * @param cwd - Project root, used to format warning paths relative to it.
- * @returns `true` when the resolved declaration carries a leading
- *   `@deprecated` JSDoc tag.
- */
-function deprecationOf(
-  absolutePath: string,
-  exp: ParsedExport,
-  warnings: string[],
-  cwd: string,
-): boolean {
-  const text = readSourceForDeprecation(absolutePath, warnings, cwd);
-  if (text === null) return false;
-
-  try {
-    return detectDeprecation(text, absolutePath, lookupFor(exp));
-  } catch (err) {
-    const rel = toPosixPath(relative(cwd, absolutePath));
-    warnings.push(
-      `failed to parse source "${rel}" for deprecation check: ${(err as Error).message}`,
-    );
-    return false;
-  }
-}
-
-/**
  * Maps a barrel-parsed export to the lookup shape understood by the
  * per-Component source detectors. Only `default-reexport` shapes resolve to a
  * default lookup; every other shape resolves to a named lookup against the
@@ -474,143 +444,36 @@ function lookupFor(exp: ParsedExport): DeprecationLookup {
 }
 
 /**
- * Reads a source file for the deprecation check. Recoverable read errors are
- * pushed onto `warnings` and the function returns `null`; the scan continues
- * with `deprecated: false` for that Component.
+ * Reads and parses a Component's source file once, for the per-Component
+ * detectors to share. A recoverable read error or a fatal parse error is
+ * recorded as a single warning and the function returns `null`; the scan then
+ * reports that Component with each detector's fallback value. For barrel-local
+ * Components the file is the barrel itself.
  *
  * @param absolutePath - Absolute path of the source file to read.
  * @param warnings - Mutable accumulator for non-fatal warnings.
  * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The file contents, or `null` when the read failed.
+ * @returns The parsed source, or `null` when the read or parse failed.
  */
-function readSourceForDeprecation(
+function readAndParseSource(
   absolutePath: string,
   warnings: string[],
   cwd: string,
-): string | null {
+): ParsedSource | null {
+  const rel = toPosixPath(relative(cwd, absolutePath));
+
+  let text: string;
   try {
-    return readFileSync(absolutePath, "utf8");
+    text = readFileSync(absolutePath, "utf8");
   } catch (err) {
-    const rel = toPosixPath(relative(cwd, absolutePath));
-    warnings.push(
-      `failed to read source "${rel}" for deprecation check: ${(err as Error).message}`,
-    );
+    warnings.push(`failed to read source "${rel}": ${(err as Error).message}`);
     return null;
   }
-}
-
-/**
- * Computes the props-typing classification for a single Component by
- * inspecting the declaration its barrel export resolves to. Read or parse
- * failures are recorded as warnings and the Component is reported as
- * `unanalyzed`. For barrel-local Components the file is the barrel itself.
- *
- * @param absolutePath - Absolute path of the file containing the declaration.
- * @param exp - The barrel-parsed export, used to determine what to look up.
- * @param warnings - Mutable accumulator for non-fatal warnings.
- * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The props-typing classification for the Component.
- */
-function propsTypingOf(
-  absolutePath: string,
-  exp: ParsedExport,
-  warnings: string[],
-  cwd: string,
-): PropsTyping {
-  const text = readSourceForPropsTyping(absolutePath, warnings, cwd);
-  if (text === null) return "unanalyzed";
 
   try {
-    return detectPropsTyping(text, absolutePath, lookupFor(exp));
+    return parseSource(text, absolutePath);
   } catch (err) {
-    const rel = toPosixPath(relative(cwd, absolutePath));
-    warnings.push(
-      `failed to parse source "${rel}" for props-typing check: ${(err as Error).message}`,
-    );
-    return "unanalyzed";
-  }
-}
-
-/**
- * Reads a source file for the props-typing check. Recoverable read errors are
- * pushed onto `warnings` and the function returns `null`; the scan continues
- * with `unanalyzed` for that Component.
- *
- * @param absolutePath - Absolute path of the source file to read.
- * @param warnings - Mutable accumulator for non-fatal warnings.
- * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The file contents, or `null` when the read failed.
- */
-function readSourceForPropsTyping(
-  absolutePath: string,
-  warnings: string[],
-  cwd: string,
-): string | null {
-  try {
-    return readFileSync(absolutePath, "utf8");
-  } catch (err) {
-    const rel = toPosixPath(relative(cwd, absolutePath));
-    warnings.push(
-      `failed to read source "${rel}" for props-typing check: ${(err as Error).message}`,
-    );
-    return null;
-  }
-}
-
-/**
- * Computes the definition-kind classification for a single Component by
- * inspecting the declaration its barrel export resolves to. Read or parse
- * failures are recorded as warnings and the Component is reported as
- * `unanalyzed`. For barrel-local Components the file is the barrel itself.
- *
- * @param absolutePath - Absolute path of the file containing the declaration.
- * @param exp - The barrel-parsed export, used to determine what to look up.
- * @param warnings - Mutable accumulator for non-fatal warnings.
- * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The definition-kind classification for the Component.
- */
-function definitionKindOf(
-  absolutePath: string,
-  exp: ParsedExport,
-  warnings: string[],
-  cwd: string,
-): DefinitionKind {
-  const text = readSourceForDefinitionKind(absolutePath, warnings, cwd);
-  if (text === null) return "unanalyzed";
-
-  try {
-    return detectDefinitionKind(text, absolutePath, lookupFor(exp));
-  } catch (err) {
-    const rel = toPosixPath(relative(cwd, absolutePath));
-    warnings.push(
-      `failed to parse source "${rel}" for definition-kind check: ${(err as Error).message}`,
-    );
-    return "unanalyzed";
-  }
-}
-
-/**
- * Reads a source file for the definition-kind check. Recoverable read errors
- * are pushed onto `warnings` and the function returns `null`; the scan
- * continues with `unanalyzed` for that Component.
- *
- * @param absolutePath - Absolute path of the source file to read.
- * @param warnings - Mutable accumulator for non-fatal warnings.
- * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The file contents, or `null` when the read failed.
- */
-function readSourceForDefinitionKind(
-  absolutePath: string,
-  warnings: string[],
-  cwd: string,
-): string | null {
-  try {
-    return readFileSync(absolutePath, "utf8");
-  } catch (err) {
-    const rel = toPosixPath(relative(cwd, absolutePath));
-    warnings.push(
-      `failed to read source "${rel}" for definition-kind check: ${(err as Error).message}`,
-    );
+    warnings.push(`failed to parse source "${rel}": ${(err as Error).message}`);
     return null;
   }
 }

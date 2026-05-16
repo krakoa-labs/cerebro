@@ -1,5 +1,5 @@
 import { getProp, isIdentifier, isMemberExpression } from "./ast-guards.js";
-import { parseSource } from "./parse-source.js";
+import type { ParsedSource } from "./parse-source.js";
 
 export type DefinitionKind = "class" | "function" | "other" | "unanalyzed";
 
@@ -30,20 +30,15 @@ const TYPE_WRAPPER_TYPES = new Set([
  * results, a class with no recognized base, non-component exports), and
  * `unanalyzed` when the export cannot be traced to a value in this file.
  *
- * @param sourceText - The source file contents.
- * @param filename - The source file path. Its extension selects the parser
- *   language (`.tsx` vs `.ts`).
+ * @param source - The parsed source file to inspect.
  * @param lookup - Which export to inspect: `default`, or a named export.
  * @returns The definition-kind classification for the resolved Component.
- * @throws If `oxc-parser` reports a fatal parse error on the source.
  */
 export function detectDefinitionKind(
-  sourceText: string,
-  filename: string,
+  source: ParsedSource,
   lookup: DefinitionKindLookup,
 ): DefinitionKind {
-  const parsed = parseSource(sourceText, filename);
-  const body = getProp(parsed.program, "body");
+  const body = getProp(source.program, "body");
   if (!Array.isArray(body)) return "unanalyzed";
 
   const resolved = resolveExportedValue(body, lookup);
