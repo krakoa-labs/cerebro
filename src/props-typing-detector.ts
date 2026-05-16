@@ -1,6 +1,7 @@
-import { getProp, isIdentifier, isMemberExpression } from "./ast-guards.js";
+import { getProp, isIdentifier } from "./ast-guards.js";
 import { type ExportLookup, resolveExportedValue } from "./export-resolution.js";
 import type { ParsedSource } from "./parse-source.js";
+import { type WrapperKind, wrapperKind } from "./react-wrappers.js";
 
 export type PropsTyping = "typed" | "untyped" | "unanalyzed";
 
@@ -110,23 +111,6 @@ function resolveWrappedComponent(call: unknown): ComponentFunction {
 }
 
 /**
- * Identifies a `forwardRef` / `memo` callee, whether called bare or qualified
- * (`React.forwardRef`). Only the final name segment is matched.
- *
- * @param callee - The `CallExpression.callee` node.
- * @returns The wrapper kind, or `null` for any other callee.
- */
-function wrapperKind(callee: unknown): "forwardRef" | "memo" | null {
-  let name: string | null = null;
-  if (isIdentifier(callee)) name = callee.name;
-  else if (isMemberExpression(callee) && isIdentifier(callee.property)) name = callee.property.name;
-
-  if (name === "forwardRef") return "forwardRef";
-  if (name === "memo") return "memo";
-  return null;
-}
-
-/**
  * Tests whether a wrapper call's type arguments include the props type.
  * `forwardRef<Ref, Props>` types the props with its second argument;
  * `memo<Props>` with its first.
@@ -135,10 +119,7 @@ function wrapperKind(callee: unknown): "forwardRef" | "memo" | null {
  * @param typeArguments - The call's `typeArguments` node.
  * @returns `true` when the type arguments cover the props.
  */
-function wrapperTypeArgsCoverProps(
-  wrapper: "forwardRef" | "memo",
-  typeArguments: unknown,
-): boolean {
+function wrapperTypeArgsCoverProps(wrapper: WrapperKind, typeArguments: unknown): boolean {
   const params = getProp(typeArguments, "params");
   if (!Array.isArray(params)) return false;
   return wrapper === "forwardRef" ? params.length >= 2 : params.length >= 1;

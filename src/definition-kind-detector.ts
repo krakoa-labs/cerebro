@@ -5,6 +5,7 @@ import {
   resolveNamedBinding,
 } from "./export-resolution.js";
 import type { ParsedSource } from "./parse-source.js";
+import { wrapperKind } from "./react-wrappers.js";
 
 export type DefinitionKind = "class" | "function" | "other" | "unanalyzed";
 
@@ -123,23 +124,6 @@ function classifyWrapperCall(call: unknown, body: unknown[], visited: Set<string
   }
 
   return classifyValue(inner, body, visited);
-}
-
-/**
- * Identifies a `forwardRef` / `memo` callee, whether called bare or qualified
- * (`React.forwardRef`). Only the final name segment is matched.
- *
- * @param callee - The `CallExpression.callee` node.
- * @returns The wrapper kind, or `null` for any other callee.
- */
-function wrapperKind(callee: unknown): "forwardRef" | "memo" | null {
-  let name: string | null = null;
-  if (isIdentifier(callee)) name = callee.name;
-  else if (isMemberExpression(callee) && isIdentifier(callee.property)) name = callee.property.name;
-
-  if (name === "forwardRef") return "forwardRef";
-  if (name === "memo") return "memo";
-  return null;
 }
 
 /**
