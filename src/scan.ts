@@ -2,7 +2,8 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
-import { type DeprecationLookup, detectDeprecation } from "./deprecation-detector.js";
+import { detectDeprecation } from "./deprecation-detector.js";
+import type { ExportLookup } from "./export-resolution.js";
 import { CONFIG_FILENAME } from "./init.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
@@ -438,7 +439,7 @@ function sumTestCounts(acc: TestCounts, next: TestCounts): TestCounts {
  * @param exp - The barrel-parsed export.
  * @returns The corresponding export lookup.
  */
-function lookupFor(exp: ParsedExport): DeprecationLookup {
+function lookupFor(exp: ParsedExport): ExportLookup {
   if (exp.shape === "default-reexport") return { kind: "default" };
   return { kind: "named", name: exp.importedName ?? exp.name };
 }

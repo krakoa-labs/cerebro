@@ -1,9 +1,12 @@
 import { getProp, isIdentifier, isMemberExpression } from "./ast-guards.js";
+import {
+  type ExportLookup,
+  resolveExportedValue,
+  resolveNamedBinding,
+} from "./export-resolution.js";
 import type { ParsedSource } from "./parse-source.js";
 
 export type DefinitionKind = "class" | "function" | "other" | "unanalyzed";
-
-export type DefinitionKindLookup = { kind: "default" } | { kind: "named"; name: string };
 
 // React base classes a class component extends. Only the final name segment is
 // matched, so a bare `Component` and a qualified `React.Component` both count.
@@ -34,114 +37,14 @@ const TYPE_WRAPPER_TYPES = new Set([
  * @param lookup - Which export to inspect: `default`, or a named export.
  * @returns The definition-kind classification for the resolved Component.
  */
-export function detectDefinitionKind(
-  source: ParsedSource,
-  lookup: DefinitionKindLookup,
-): DefinitionKind {
+export function detectDefinitionKind(source: ParsedSource, lookup: ExportLookup): DefinitionKind {
   const body = getProp(source.program, "body");
   if (!Array.isArray(body)) return "unanalyzed";
 
-  const resolved = resolveExportedValue(body, lookup);
-  if (resolved.kind === "untraceable") return "unanalyzed";
+  const resolved = resolveExportedValue(body, lookup, skipTypeWrappers);
+  if (resolved === null) return "unanalyzed";
 
   return classifyValue(resolved.value, body, new Set());
-}
-
-// A resolution either traces the export to a bound value node, or fails to
-// find any declaration for it in this file (`untraceable`).
-type Resolution = { kind: "value"; value: unknown } | { kind: "untraceable" };
-
-const UNTRACEABLE: Resolution = { kind: "untraceable" };
-
-/**
- * Resolves the export the lookup points to down to the value it binds.
- *
- * @param body - Top-level body statements of the source program.
- * @param lookup - Which export to resolve.
- * @returns The bound value, or `untraceable` when the export cannot be traced
- *   to a declaration in this file.
- */
-function resolveExportedValue(body: unknown[], lookup: DefinitionKindLookup): Resolution {
-  if (lookup.kind === "default") return resolveDefaultExport(body);
-  return resolveNamedBinding(body, lookup.name);
-}
-
-/**
- * Resolves a named binding by scanning every top-level statement — both
- * inline-exported declarations (`export const Foo`, `export function Foo`) and
- * standalone declarations later published via `export { Foo }`.
- *
- * @param body - Top-level body statements of the source program.
- * @param name - The local binding name to find.
- * @returns The bound value, or `untraceable` when no declaration matches.
- */
-function resolveNamedBinding(body: unknown[], name: string): Resolution {
-  for (const stmt of body) {
-    const declaration =
-      getProp(stmt, "type") === "ExportNamedDeclaration" ? getProp(stmt, "declaration") : stmt;
-
-    const found = bindingFromDeclaration(declaration, name);
-    if (found.kind === "value") return found;
-  }
-  return UNTRACEABLE;
-}
-
-/**
- * Extracts the value bound to `name` from a single declaration node, when that
- * declaration binds it. Handles function/class declarations and variable
- * declarations.
- *
- * @param declaration - The candidate declaration node.
- * @param name - The binding name to match.
- * @returns The bound value, or `untraceable` when the declaration does not
- *   bind `name`.
- */
-function bindingFromDeclaration(declaration: unknown, name: string): Resolution {
-  const type = getProp(declaration, "type");
-
-  if (type === "FunctionDeclaration" || type === "ClassDeclaration") {
-    const id = getProp(declaration, "id");
-    if (isIdentifier(id) && id.name === name) return { kind: "value", value: declaration };
-    return UNTRACEABLE;
-  }
-
-  if (type === "VariableDeclaration") {
-    const declarations = getProp(declaration, "declarations");
-    if (!Array.isArray(declarations)) return UNTRACEABLE;
-
-    for (const declarator of declarations) {
-      const id = getProp(declarator, "id");
-      if (isIdentifier(id) && id.name === name) {
-        return { kind: "value", value: getProp(declarator, "init") };
-      }
-    }
-  }
-
-  return UNTRACEABLE;
-}
-
-/**
- * Resolves the `export default …` of a file. A default that exports a
- * function/class declaration or an inline expression resolves to that node; a
- * default that exports a bare identifier resolves through the local binding of
- * that name.
- *
- * @param body - Top-level body statements of the source program.
- * @returns The default-exported value, or `untraceable` when there is no
- *   default export or it cannot be traced to a declaration in this file.
- */
-function resolveDefaultExport(body: unknown[]): Resolution {
-  const exportDefault = body.find((stmt) => getProp(stmt, "type") === "ExportDefaultDeclaration");
-  if (exportDefault === undefined) return UNTRACEABLE;
-
-  const declaration = skipTypeWrappers(getProp(exportDefault, "declaration"));
-  if (getProp(declaration, "type") === "Identifier") {
-    const refName = getProp(declaration, "name");
-    if (typeof refName !== "string") return UNTRACEABLE;
-    return resolveNamedBinding(body, refName);
-  }
-
-  return { kind: "value", value: declaration };
 }
 
 /**
@@ -215,7 +118,7 @@ function classifyWrapperCall(call: unknown, body: unknown[], visited: Set<string
     if (visited.has(inner.name)) return "other";
     visited.add(inner.name);
     const resolved = resolveNamedBinding(body, inner.name);
-    if (resolved.kind === "untraceable") return "other";
+    if (resolved === null) return "other";
     return classifyValue(resolved.value, body, visited);
   }
 

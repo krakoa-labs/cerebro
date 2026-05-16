@@ -168,6 +168,11 @@ describe("detectDefinitionKind — default lookup", () => {
     expect(detectDefinitionKind(parse(src), dflt)).toBe("function");
   });
 
+  it("resolves a default export of an identifier behind an as-cast", () => {
+    const src = "const Button = () => null;\nexport default Button as Bar;\n";
+    expect(detectDefinitionKind(parse(src), dflt)).toBe("function");
+  });
+
   it("resolves a default export that references a local class", () => {
     const src = "class Button extends Component { render() {} }\nexport default Button;\n";
     expect(detectDefinitionKind(parse(src), dflt)).toBe("class");

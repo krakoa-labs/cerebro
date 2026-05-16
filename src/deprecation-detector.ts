@@ -1,8 +1,7 @@
 import type { Comment } from "oxc-parser";
 import { getProp, isIdentifier } from "./ast-guards.js";
+import type { ExportLookup } from "./export-resolution.js";
 import type { ParsedSource } from "./parse-source.js";
-
-export type DeprecationLookup = { kind: "default" } | { kind: "named"; name: string };
 
 // Matches `@deprecated` only when it starts a JSDoc line — after the leading
 // `*` decoration and optional whitespace. Prevents false positives when the
@@ -22,7 +21,7 @@ const DEPRECATED_TAG = /^\s*\*?\s*@deprecated\b/m;
  * @returns `true` when a leading JSDoc on the resolved declaration contains
  *   `@deprecated`; `false` otherwise.
  */
-export function detectDeprecation(source: ParsedSource, lookup: DeprecationLookup): boolean {
+export function detectDeprecation(source: ParsedSource, lookup: ExportLookup): boolean {
   const declStart = findDeclarationStart(source, lookup);
   if (declStart === null) return false;
   return hasLeadingDeprecatedJsdoc(source.comments, source.text, declStart);
@@ -38,7 +37,7 @@ export function detectDeprecation(source: ParsedSource, lookup: DeprecationLooku
  * @param lookup - Which export to anchor on.
  * @returns The start offset of the anchor statement, or `null`.
  */
-function findDeclarationStart(parsed: ParsedSource, lookup: DeprecationLookup): number | null {
+function findDeclarationStart(parsed: ParsedSource, lookup: ExportLookup): number | null {
   const body = getProp(parsed.program, "body");
   if (!Array.isArray(body)) return null;
 
