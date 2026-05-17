@@ -1,9 +1,9 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { builtinModules } from "node:module";
-import { dirname, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
-import { resolveSourcePath } from "./source-resolution.js";
+import { type Binding, resolveImportedSource } from "./reexport-resolution.js";
 import type { AliasExpander } from "./tsconfig-aliases.js";
 
 /** TypeScript source extensions a Component scope is walked for. */
@@ -42,10 +42,6 @@ const NODE_BUILTINS = new Set<string>(builtinModules);
 
 /** Shared scan state the dependency collector resolves imports against. */
 export interface DependencyContext {
-  /** Absolute path of the design system's barrel file. */
-  barrelPath: string;
-  /** Every Component name — the set an edge's target is checked against. */
-  componentNames: Set<string>;
   /** Resolved source file path mapped to the Component names it backs. */
   pathToComponents: Map<string, string[]>;
   /** Expander for non-relative (tsconfig-aliased) import specifiers. */
@@ -58,8 +54,8 @@ export interface DependencyContext {
 interface SourceImport {
   /** The module specifier — the statement's `from` value. */
   specifier: string;
-  /** The names imported by name, used to map a barrel import to Components. */
-  namedBindings: string[];
+  /** The bindings the statement imports, each followed to its source file. */
+  bindings: Binding[];
 }
 
 /** A Component's collected dependencies, internal and external. */
@@ -121,10 +117,12 @@ export function collectDependenciesForComponent(
 }
 
 /**
- * Resolves one import to the Component names it creates an edge to. An import
- * resolving to the barrel is matched by binding name; an import resolving to a
- * Component's source file yields an edge to every Component that file backs;
- * anything else (a third-party package, an internal helper) yields no edge.
+ * Resolves one import to the Component names it creates an edge to. Each
+ * imported binding is followed — through re-export chains, including the
+ * design system's barrels — to the file that declares it; a binding landing
+ * on a Component's source file yields an edge to every Component that file
+ * backs. Anything else (a third-party package, an internal helper) yields no
+ * edge.
  *
  * @param file - The source file the import was found in.
  * @param sourceImport - The import statement reduced to specifier and bindings.
@@ -136,19 +134,17 @@ function resolveEdge(
   sourceImport: SourceImport,
   context: DependencyContext,
 ): string[] {
-  const target = resolveSourcePath(
-    dirname(file),
-    sourceImport.specifier,
-    null,
-    context.expandAlias,
-  );
-  if (target === null) return [];
-
-  if (target === context.barrelPath) {
-    return sourceImport.namedBindings.filter((name) => context.componentNames.has(name));
+  const edges: string[] = [];
+  for (const binding of sourceImport.bindings) {
+    const declared = resolveImportedSource(
+      file,
+      sourceImport.specifier,
+      binding,
+      context.expandAlias,
+    );
+    if (declared !== null) edges.push(...(context.pathToComponents.get(declared) ?? []));
   }
-
-  return context.pathToComponents.get(target) ?? [];
+  return edges;
 }
 
 /**
@@ -222,12 +218,14 @@ function importsOf(file: string, warnings: string[], cwd: string): SourceImport[
     const specifier = statement.moduleRequest?.value;
     if (specifier === undefined) return [];
 
-    const namedBindings = statement.entries.flatMap((entry) =>
-      entry.importName.kind === "Name" && entry.importName.name !== null
-        ? [entry.importName.name]
-        : [],
-    );
-    return [{ specifier, namedBindings }];
+    const bindings = statement.entries.flatMap<Binding>((entry) => {
+      if (entry.importName.kind === "Default") return [{ kind: "default" }];
+      if (entry.importName.kind === "Name" && entry.importName.name !== null) {
+        return [{ kind: "named", name: entry.importName.name }];
+      }
+      return [];
+    });
+    return [{ specifier, bindings }];
   });
 }
 

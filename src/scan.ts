@@ -12,7 +12,8 @@ import { type ActivityLogEntry, type GitAvailability, inspectGit, readActivityLo
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
-import { findBarrelFile, resolveSourcePath } from "./source-resolution.js";
+import { resolveComponentSource } from "./reexport-resolution.js";
+import { findBarrelFile } from "./source-resolution.js";
 import {
   type StoryBreakdown,
   ZERO_STORIES,
@@ -94,7 +95,6 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 
   const parseWarnings = parsed.warnings.map(describeWarning);
 
-  const barrelDir = dirname(barrelPath);
   const warnings: string[] = [...parseWarnings];
 
   const git = inspectGit(cwd);
@@ -115,7 +115,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const isBarrelLocal = exp.shape === "barrel-local";
     const absolutePath = isBarrelLocal
       ? barrelPath
-      : resolveSourcePath(barrelDir, exp.source as string, exp.importedName, expandAlias);
+      : resolveComponentSource(barrelPath, exp.name, expandAlias);
 
     if (absolutePath === null) {
       warnings.push(`skipped export "${exp.name}": could not resolve "${exp.source}"`);
@@ -131,7 +131,6 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     componentsPerDir.set(dir, (componentsPerDir.get(dir) ?? 0) + 1);
   }
 
-  const componentNames = new Set(resolved.map(({ exp }) => exp.name));
   const pathToComponents = new Map<string, string[]>();
   for (const { exp, absolutePath } of resolved) {
     const names = pathToComponents.get(absolutePath);
@@ -139,8 +138,6 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     else names.push(exp.name);
   }
   const dependencyContext: DependencyContext = {
-    barrelPath,
-    componentNames,
     pathToComponents,
     expandAlias,
     matchesPathAlias,

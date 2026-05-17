@@ -50,36 +50,39 @@ export function resolveSourcePath(
  * file: a direct `.tsx`/`.ts` file, or — when the base is a directory — a
  * file inside it.
  *
+ * Directory resolution depends on how the folder was imported. A named import
+ * (`importedName` set) addresses one export of a multi-Component barrel, so
+ * the file named after the export is preferred, then the folder's `index`
+ * barrel to route through. A default import (`importedName` is `null`)
+ * addresses the single Component the folder ships, so the folder-named file
+ * (`X/X.tsx`) is preferred, then the `index` barrel.
+ *
  * @param base - The absolute base path to resolve.
- * @param importedName - The imported binding name, when available.
+ * @param importedName - The imported binding name, or `null` for a default
+ *   import.
  * @returns The resolved source file path, or `null` when none exists.
  */
 function resolveBaseToFile(base: string, importedName: string | null): string | null {
-  const directFile = findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => `${base}${ext}`));
+  const directFile = findFileWithExt(base);
   if (directFile !== null) return directFile;
 
   if (!statSync(base, { throwIfNoEntry: false })?.isDirectory()) return null;
 
-  // When the folder holds several sibling files (e.g. FancySelect/ contains both
-  // FancySelect.tsx and FancyAsyncSelect.tsx), the imported name disambiguates
-  // which file is the source of THIS export.
-  if (importedName !== null) {
-    const named = findExistingFile(
-      SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `${importedName}${ext}`)),
-    );
-    if (named !== null) return named;
-  }
+  const preferred = findFileWithExt(join(base, importedName ?? basename(base)));
+  if (preferred !== null) return preferred;
 
-  // Prefer `X/X.tsx` over `X/index.tsx`: the folder-named file is the canonical
-  // Component source in most React DS conventions; `index.ts` is usually an
-  // inner barrel that just re-exports it.
-  const folderName = basename(base);
-  const folderNamed = findExistingFile(
-    SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `${folderName}${ext}`)),
-  );
-  if (folderNamed !== null) return folderNamed;
+  return findFileWithExt(join(base, "index"));
+}
 
-  return findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => join(base, `index${ext}`)));
+/**
+ * Finds the first existing file at `pathWithoutExt` carrying a supported
+ * source extension.
+ *
+ * @param pathWithoutExt - The absolute path without a file extension.
+ * @returns The existing file path, or `null` when none exists.
+ */
+function findFileWithExt(pathWithoutExt: string): string | null {
+  return findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => `${pathWithoutExt}${ext}`));
 }
 
 /**
