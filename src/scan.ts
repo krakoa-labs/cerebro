@@ -149,7 +149,9 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 
   const components = resolved.map(({ exp, absolutePath, isBarrelLocal }): ScannedComponent => {
     const rel = toPosixPath(relative(cwd, absolutePath));
-    const tests = isBarrelLocal ? ZERO_TESTS : countTestsForComponent(absolutePath, warnings, cwd);
+    const tests = isBarrelLocal
+      ? ZERO_TESTS
+      : countTestsForComponent(absolutePath, exp.name, warnings, cwd);
 
     const source = readAndParseSource(absolutePath, warnings, cwd);
     const lookup = lookupFor(exp);
@@ -161,7 +163,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       ? undefined
       : isBarrelLocal
         ? ZERO_STORIES
-        : analyzeStoriesForComponent(absolutePath, warnings, cwd);
+        : analyzeStoriesForComponent(absolutePath, exp.name, warnings, cwd);
 
     const figmaConnections = !usesFigmaCodeConnect
       ? undefined

@@ -20,11 +20,15 @@ const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
 
 /**
  * Sums test counts across every supported test file co-located with — or in a
- * `__tests__/` folder next to — a Component's source file. Missing files are
+ * `__tests__/` folder next to — a Component's source file. A test file named
+ * after the source file and one named after the Component both count; the two
+ * differ when a Component is re-exported under another name. Missing files are
  * skipped; read or parse errors are recorded as warnings and that file is
  * skipped without aborting the count.
  *
  * @param componentSource - Absolute path to the Component's source file.
+ * @param componentName - The Component's name, for test files named after it
+ *   rather than after the source file.
  * @param warnings - Mutable accumulator for non-fatal warnings raised during
  *   test-file reads or parses.
  * @param cwd - Project root, used to format warning paths relative to it.
@@ -32,11 +36,12 @@ const TEST_SUFFIXES = [".test.tsx", ".test.ts", ".spec.tsx", ".spec.ts"];
  */
 export function countTestsForComponent(
   componentSource: string,
+  componentName: string,
   warnings: string[],
   cwd: string,
 ): TestCounts {
   return foldOverCandidates<TestCounts>({
-    candidates: testFileCandidates(componentSource),
+    candidates: testFileCandidates(componentSource, componentName),
     zero: ZERO_TESTS,
     label: "test",
     parse: countTests,
@@ -47,18 +52,23 @@ export function countTestsForComponent(
 }
 
 /**
- * Builds the supported test-file candidates for a component source file.
+ * Builds the supported test-file candidates for a Component — co-located with
+ * and in a `__tests__/` folder beside its source file, named after either the
+ * source file or the Component. The two names coincide for most Components, so
+ * the bases are deduplicated to keep a shared file from being counted twice.
  *
- * @param componentSource - Absolute path to the component source file.
+ * @param componentSource - Absolute path to the Component's source file.
+ * @param componentName - The Component's name.
  * @returns Co-located and `__tests__` candidate file paths.
  */
-function testFileCandidates(componentSource: string): string[] {
+function testFileCandidates(componentSource: string, componentName: string): string[] {
   const dir = dirname(componentSource);
-  const base = basename(componentSource, extname(componentSource));
-  const colocated = TEST_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
-  const subfolder = TEST_SUFFIXES.map((suffix) => join(dir, "__tests__", `${base}${suffix}`));
+  const fileBase = basename(componentSource, extname(componentSource));
 
-  return [...colocated, ...subfolder];
+  return [...new Set([fileBase, componentName])].flatMap((base) => [
+    ...TEST_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`)),
+    ...TEST_SUFFIXES.map((suffix) => join(dir, "__tests__", `${base}${suffix}`)),
+  ]);
 }
 
 /**

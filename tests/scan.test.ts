@@ -402,6 +402,20 @@ describe("scan test counting", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it("counts a test file named after the Component, not the source file", () => {
+    writeBarrel(cwd, "src/components", `export { default as PrimaryButton } from "./Button";`);
+    writeFileSync(
+      join(cwd, "src", "components", "Button.tsx"),
+      "export default function Button() {}",
+    );
+    writeFileSync(join(cwd, "src", "components", "PrimaryButton.test.tsx"), `it("a", () => {});`);
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.name).toBe("PrimaryButton");
+    expect(result.components[0]?.tests).toEqual({ total: 1, skipped: 0, only: 0 });
+  });
+
   it("skips test lookup for Components declared locally in the barrel", () => {
     writeBarrel(cwd, "src/components", `export const Inline = "x";`);
     writeFileSync(
@@ -449,6 +463,23 @@ describe("scan story counting", () => {
     expect(result.components[0]?.name).toBe("Broken");
     expect(result.components[0]?.stories).toEqual(ZERO_STORIES);
     expect(result.warnings.some((w) => w.includes("failed to parse stories file"))).toBe(true);
+  });
+
+  it("counts a stories file named after the Component, not the source file", () => {
+    writeBarrel(cwd, "src/components", `export { default as PrimaryButton } from "./Button";`);
+    writeFileSync(
+      join(cwd, "src", "components", "Button.tsx"),
+      "export default function Button() {}",
+    );
+    writeFileSync(
+      join(cwd, "src", "components", "PrimaryButton.stories.tsx"),
+      "export default {}; export const Basic = {};",
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.name).toBe("PrimaryButton");
+    expect(result.components[0]?.stories?.total).toBe(1);
   });
 
   it("omits the stories field entirely when usesStorybook is false in the config", () => {

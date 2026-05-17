@@ -69,11 +69,15 @@ export function analyzeStories(sourceText: string, filename: string): StoryBreak
 
 /**
  * Sums the CSF-generation breakdowns across every co-located stories file
- * (`*.stories.tsx`, `*.stories.ts`) found next to a Component's source file.
- * Missing files are skipped; read or parse errors are recorded as warnings
- * and that file is skipped without aborting the count.
+ * (`*.stories.tsx`, `*.stories.ts`) found next to a Component's source file. A
+ * stories file named after the source file and one named after the Component
+ * both count; the two differ when a Component is re-exported under another
+ * name. Missing files are skipped; read or parse errors are recorded as
+ * warnings and that file is skipped without aborting the count.
  *
  * @param componentSource - Absolute path to the Component's source file.
+ * @param componentName - The Component's name, for stories files named after
+ *   it rather than after the source file.
  * @param warnings - Mutable accumulator for non-fatal warnings raised during
  *   stories-file reads or parses.
  * @param cwd - Project root, used to format warning paths relative to it.
@@ -82,11 +86,12 @@ export function analyzeStories(sourceText: string, filename: string): StoryBreak
  */
 export function analyzeStoriesForComponent(
   componentSource: string,
+  componentName: string,
   warnings: string[],
   cwd: string,
 ): StoryBreakdown {
   return foldOverCandidates<StoryBreakdown>({
-    candidates: storyFileCandidates(componentSource),
+    candidates: storyFileCandidates(componentSource, componentName),
     zero: ZERO_STORIES,
     label: "stories",
     parse: analyzeStories,
@@ -97,16 +102,22 @@ export function analyzeStoriesForComponent(
 }
 
 /**
- * Builds the supported story-file candidates for a component source file.
+ * Builds the supported story-file candidates for a Component — co-located with
+ * its source file, named after either the source file or the Component. The
+ * two names coincide for most Components, so the bases are deduplicated to
+ * keep a shared file from being counted twice.
  *
- * @param componentSource - Absolute path to the component source file.
+ * @param componentSource - Absolute path to the Component's source file.
+ * @param componentName - The Component's name.
  * @returns Co-located Storybook candidate file paths.
  */
-function storyFileCandidates(componentSource: string): string[] {
+function storyFileCandidates(componentSource: string, componentName: string): string[] {
   const dir = dirname(componentSource);
-  const base = basename(componentSource, extname(componentSource));
+  const fileBase = basename(componentSource, extname(componentSource));
 
-  return STORY_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`));
+  return [...new Set([fileBase, componentName])].flatMap((base) =>
+    STORY_SUFFIXES.map((suffix) => join(dir, `${base}${suffix}`)),
+  );
 }
 
 /**
