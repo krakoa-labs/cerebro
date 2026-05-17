@@ -37,6 +37,7 @@ export interface ScannedComponent {
   definitionKind: DefinitionKind;
   activityLog?: ActivityLogEntry[];
   dependsOn?: string[];
+  externalDependencies?: string[];
 }
 
 export interface ScanResult {
@@ -105,7 +106,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   }
   const produceActivityLog = tracksActivityLog && git.available;
 
-  const expandAlias = readTsconfigAliases(cwd, warnings);
+  const { expand: expandAlias, matchesPathAlias } = readTsconfigAliases(cwd, warnings);
 
   // Resolve every export to its source file first: a Component's Component
   // scope depends on how many Components share its directory, which is only
@@ -142,6 +143,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     componentNames,
     pathToComponents,
     expandAlias,
+    matchesPathAlias,
   };
 
   const figmaSubstitutions = usesFigmaCodeConnect
@@ -176,7 +178,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       ? readActivityLog(cwd, toPosixPath(relative(cwd, componentScope)), activityLogDepth)
       : undefined;
 
-    const dependsOn =
+    const dependencies =
       source === null
         ? undefined
         : collectDependenciesForComponent(
@@ -198,7 +200,12 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       ...(stories !== undefined ? { stories } : {}),
       ...(figmaConnections !== undefined ? { figmaConnections } : {}),
       ...(activityLog !== undefined ? { activityLog } : {}),
-      ...(dependsOn !== undefined ? { dependsOn } : {}),
+      ...(dependencies !== undefined
+        ? {
+            dependsOn: dependencies.dependsOn,
+            externalDependencies: dependencies.externalDependencies,
+          }
+        : {}),
     };
   });
 

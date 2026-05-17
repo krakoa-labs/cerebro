@@ -27,7 +27,7 @@ describe("readTsconfigAliases", () => {
 
   it("yields no candidates when the project has no tsconfig", () => {
     const warnings: string[] = [];
-    const expand = readTsconfigAliases(cwd, warnings);
+    const { expand } = readTsconfigAliases(cwd, warnings);
 
     expect(expand("@/components/Button")).toEqual([]);
     expect(warnings).toEqual([]);
@@ -37,7 +37,7 @@ describe("readTsconfigAliases", () => {
     writeJson("tsconfig.json", {
       compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
     });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("@/components/Button")).toEqual([resolve(cwd, "src/components/Button")]);
   });
@@ -46,7 +46,7 @@ describe("readTsconfigAliases", () => {
     writeJson("tsconfig.json", {
       compilerOptions: { baseUrl: ".", paths: { "@ds": ["src/index"] } },
     });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("@ds")).toEqual([resolve(cwd, "src/index")]);
   });
@@ -55,14 +55,14 @@ describe("readTsconfigAliases", () => {
     writeJson("tsconfig.json", {
       compilerOptions: { paths: { "@/*": ["./src/*"] } },
     });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("@/lib")).toEqual([resolve(cwd, "src/lib")]);
   });
 
   it("falls back to baseUrl for a bare specifier that matches no alias", () => {
     writeJson("tsconfig.json", { compilerOptions: { baseUrl: "src" } });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("components/Button")).toEqual([resolve(cwd, "src/components/Button")]);
   });
@@ -74,7 +74,7 @@ describe("readTsconfigAliases", () => {
         paths: { "@/*": ["src/*"], "@/components/*": ["src/ui/*"] },
       },
     });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("@/components/Button")).toEqual([resolve(cwd, "src/ui/Button")]);
   });
@@ -92,7 +92,7 @@ describe("readTsconfigAliases", () => {
         },
       }`,
     );
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("@/Button")).toEqual([resolve(cwd, "src/Button")]);
   });
@@ -102,7 +102,7 @@ describe("readTsconfigAliases", () => {
       compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
     });
     writeJson("tsconfig.json", { extends: "./tsconfig.base.json" });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("@/Button")).toEqual([resolve(cwd, "src/Button")]);
   });
@@ -115,7 +115,7 @@ describe("readTsconfigAliases", () => {
       extends: "./tsconfig.base.json",
       compilerOptions: { paths: { "@/*": ["src/*"] } },
     });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("@/Button")).toEqual([resolve(cwd, "src/Button")]);
   });
@@ -123,7 +123,7 @@ describe("readTsconfigAliases", () => {
   it("warns and yields no candidates on a malformed tsconfig", () => {
     write("tsconfig.json", "{ not json");
     const warnings: string[] = [];
-    const expand = readTsconfigAliases(cwd, warnings);
+    const { expand } = readTsconfigAliases(cwd, warnings);
 
     expect(expand("@/Button")).toEqual([]);
     expect(warnings.some((w) => w.includes("failed to parse tsconfig file"))).toBe(true);
@@ -133,8 +133,31 @@ describe("readTsconfigAliases", () => {
     writeJson("tsconfig.json", {
       compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
     });
-    const expand = readTsconfigAliases(cwd, []);
+    const { expand } = readTsconfigAliases(cwd, []);
 
     expect(expand("./Button")).toEqual([]);
+  });
+
+  it("matches a specifier covered by a paths alias pattern", () => {
+    writeJson("tsconfig.json", {
+      compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
+    });
+    const { matchesPathAlias } = readTsconfigAliases(cwd, []);
+
+    expect(matchesPathAlias("@/components/Button")).toBe(true);
+    expect(matchesPathAlias("clsx")).toBe(false);
+  });
+
+  it("does not match a bare specifier reachable only through baseUrl", () => {
+    writeJson("tsconfig.json", { compilerOptions: { baseUrl: "." } });
+    const { matchesPathAlias } = readTsconfigAliases(cwd, []);
+
+    expect(matchesPathAlias("clsx")).toBe(false);
+  });
+
+  it("matches nothing when the project has no tsconfig", () => {
+    const { matchesPathAlias } = readTsconfigAliases(cwd, []);
+
+    expect(matchesPathAlias("@/components/Button")).toBe(false);
   });
 });

@@ -15,6 +15,7 @@ const FIXTURE_STORYBOOK = join(REPO_ROOT, "fixtures", "storybook");
 const FIXTURE_CODE_CONNECT = join(REPO_ROOT, "fixtures", "code-connect");
 const FIXTURE_TSCONFIG_ALIASES = join(REPO_ROOT, "fixtures", "tsconfig-aliases");
 const FIXTURE_INTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "internal-dependencies");
+const FIXTURE_EXTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "external-dependencies");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -150,6 +151,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         dependsOn: [],
+        externalDependencies: [],
       },
       {
         name: "Mango",
@@ -160,6 +162,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         dependsOn: [],
+        externalDependencies: [],
       },
       {
         name: "Zebra",
@@ -170,6 +173,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         dependsOn: [],
+        externalDependencies: [],
       },
     ]);
     expect(result.warnings).toEqual([]);
@@ -255,6 +259,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         dependsOn: [],
+        externalDependencies: [],
       },
     ]);
   });
@@ -314,6 +319,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         dependsOn: [],
+        externalDependencies: [],
       },
     ]);
   });
@@ -663,6 +669,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         dependsOn: [],
+        externalDependencies: [],
       },
       {
         name: "Card",
@@ -673,6 +680,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         dependsOn: [],
+        externalDependencies: [],
       },
       {
         name: "Dialog",
@@ -683,6 +691,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         dependsOn: [],
+        externalDependencies: [],
       },
       {
         name: "Tooltip",
@@ -693,6 +702,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         dependsOn: [],
+        externalDependencies: [],
       },
       {
         name: "Variant",
@@ -703,6 +713,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         dependsOn: [],
+        externalDependencies: [],
       },
     ]);
     expect(result.warnings).toEqual([
@@ -870,6 +881,25 @@ describe("scan against the internal-dependencies fixture", () => {
   });
 });
 
+describe("scan against the external-dependencies fixture", () => {
+  it("records each Component's external dependencies across every import shape", () => {
+    const result = scan({ cwd: FIXTURE_EXTERNAL_DEPENDENCIES });
+
+    expect(
+      result.components.map((c) => ({
+        name: c.name,
+        externalDependencies: c.externalDependencies,
+      })),
+    ).toEqual([
+      { name: "Badge", externalDependencies: ["@radix-ui/react-dialog", "clsx", "lodash"] },
+      { name: "Button", externalDependencies: ["react-dom"] },
+      { name: "Card", externalDependencies: ["@acme/design-tokens", "date-fns"] },
+      { name: "Icon", externalDependencies: [] },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
 describe("scan internal dependencies", () => {
   let cwd: string;
 
@@ -882,7 +912,7 @@ describe("scan internal dependencies", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("omits dependsOn when the component source fails to parse", () => {
+  it("omits dependsOn and externalDependencies when the component source fails to parse", () => {
     writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
     writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "export const Broken = (props: ");
 
@@ -890,6 +920,7 @@ describe("scan internal dependencies", () => {
 
     expect(result.components[0]?.name).toBe("Broken");
     expect(result.components[0]).not.toHaveProperty("dependsOn");
+    expect(result.components[0]).not.toHaveProperty("externalDependencies");
   });
 
   it("links an edge to every Component a shared source file backs", () => {

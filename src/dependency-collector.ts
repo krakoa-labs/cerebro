@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
@@ -32,6 +33,13 @@ const EXCLUDED_SCOPE_SUFFIXES = [
  */
 const EXCLUDED_SCOPE_DIRS = new Set(["__tests__", "__storybook__"]);
 
+/**
+ * Node built-in module names. An import of a built-in is not an External
+ * dependency — a built-in is not a package, with nothing to version, audit, or
+ * migrate.
+ */
+const NODE_BUILTINS = new Set<string>(builtinModules);
+
 /** Shared scan state the dependency collector resolves imports against. */
 export interface DependencyContext {
   /** Absolute path of the design system's barrel file. */
@@ -42,6 +50,8 @@ export interface DependencyContext {
   pathToComponents: Map<string, string[]>;
   /** Expander for non-relative (tsconfig-aliased) import specifiers. */
   expandAlias: AliasExpander;
+  /** Reports whether a specifier matches a tsconfig `paths` alias pattern. */
+  matchesPathAlias: (specifier: string) => boolean;
 }
 
 /** One `import` statement reduced to what an edge is derived from. */
@@ -52,15 +62,28 @@ interface SourceImport {
   namedBindings: string[];
 }
 
+/** A Component's collected dependencies, internal and external. */
+export interface ComponentDependencies {
+  /** Names of the other Components imported across the Component scope. */
+  dependsOn: string[];
+  /** Normalized names of the external packages imported across the scope. */
+  externalDependencies: string[];
+}
+
 /**
- * Collects a Component's Internal dependencies: the names of the other
- * Components its source imports. The result is computed over the Component
- * scope — a single source file, or a whole directory — with test, story, and
- * Code Connect files excluded. An edge is counted for any `import` that
- * resolves to a Component's source file, whether the specifier is relative,
- * tsconfig-aliased, or points through the design system's barrel; a source
- * file backing several Components yields one edge per Component. The list is
- * deduplicated, has the Component itself removed, and is sorted.
+ * Collects a Component's dependencies — internal and external — over its
+ * Component scope: a single source file, or a whole directory, with test,
+ * story, and Code Connect files excluded.
+ *
+ * `dependsOn` is the names of the other Components the source imports — an edge
+ * is counted for any `import` resolving to a Component's source file, whether
+ * the specifier is relative, tsconfig-aliased, or points through the design
+ * system's barrel, and a source file backing several Components yields one
+ * edge per Component. `externalDependencies` is the names of the third-party
+ * packages imported — a bare specifier (non-relative, matching no tsconfig
+ * `paths` alias) reduced to its package name, with node built-ins and `react`
+ * excluded. Both lists are deduplicated and sorted; `dependsOn` also has the
+ * Component itself removed.
  *
  * @param scope - Absolute Component scope path: a source file or a directory.
  * @param selfName - The Component's own name, removed from its own edges.
@@ -68,7 +91,7 @@ interface SourceImport {
  * @param warnings - Mutable accumulator for non-fatal warnings raised during
  *   scope-file reads or parses.
  * @param cwd - Project root, used to format warning paths relative to it.
- * @returns The sorted, deduplicated names of the Components imported.
+ * @returns The Component's internal and external dependency lists.
  */
 export function collectDependenciesForComponent(
   scope: string,
@@ -76,19 +99,25 @@ export function collectDependenciesForComponent(
   context: DependencyContext,
   warnings: string[],
   cwd: string,
-): string[] {
+): ComponentDependencies {
   const edges = new Set<string>();
+  const externals = new Set<string>();
 
   for (const file of scopeSourceFiles(scope)) {
     for (const sourceImport of importsOf(file, warnings, cwd)) {
       for (const name of resolveEdge(file, sourceImport, context)) {
         edges.add(name);
       }
+      const pkg = resolveExternalPackage(sourceImport.specifier, context);
+      if (pkg !== null) externals.add(pkg);
     }
   }
 
   edges.delete(selfName);
-  return [...edges].sort();
+  return {
+    dependsOn: [...edges].sort(),
+    externalDependencies: [...externals].sort(),
+  };
 }
 
 /**
@@ -120,6 +149,43 @@ function resolveEdge(
   }
 
   return context.pathToComponents.get(target) ?? [];
+}
+
+/**
+ * Resolves one import specifier to the External dependency it creates, or
+ * `null` when the specifier is not one. A specifier is an External dependency
+ * when it is non-relative and matches no tsconfig `paths` alias — a bare
+ * package specifier — reduced to its package name. Node built-ins and `react`
+ * (the JSX runtime, constitutive of every Component) are not External
+ * dependencies.
+ *
+ * @param specifier - The module specifier from an import statement.
+ * @param context - Shared scan state, for the tsconfig `paths` predicate.
+ * @returns The normalized package name, or `null` when not an External
+ *   dependency.
+ */
+function resolveExternalPackage(specifier: string, context: DependencyContext): string | null {
+  if (specifier.startsWith(".")) return null;
+  if (specifier.startsWith("node:")) return null;
+  if (context.matchesPathAlias(specifier)) return null;
+
+  const pkg = packageNameOf(specifier);
+  if (NODE_BUILTINS.has(pkg) || pkg === "react") return null;
+  return pkg;
+}
+
+/**
+ * Reduces a bare module specifier to its package name: the first path segment,
+ * or the first two for a scoped package (`lodash/debounce` → `lodash`,
+ * `@radix-ui/react-dialog/dist` → `@radix-ui/react-dialog`).
+ *
+ * @param specifier - A non-relative module specifier.
+ * @returns The package name.
+ */
+function packageNameOf(specifier: string): string {
+  const segments = specifier.split("/");
+  if (specifier.startsWith("@")) return segments.slice(0, 2).join("/");
+  return segments[0] ?? specifier;
 }
 
 /**

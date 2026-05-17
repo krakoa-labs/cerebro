@@ -11,6 +11,18 @@ import { toPosixPath } from "./paths.js";
  */
 export type AliasExpander = (specifier: string) => string[];
 
+/** The path-alias capabilities read from a project's `tsconfig.json`. */
+export interface TsconfigAliases {
+  /** Expands a non-relative specifier into candidate absolute base paths. */
+  expand: AliasExpander;
+  /**
+   * Reports whether a specifier matches a `paths` alias pattern. The `baseUrl`
+   * fallback is deliberately ignored: it matches every bare specifier, so it
+   * cannot tell an internal alias apart from a third-party package.
+   */
+  matchesPathAlias: (specifier: string) => boolean;
+}
+
 /** One tsconfig file's contribution to the effective alias configuration. */
 interface Layer {
   /** Absolute directory of the tsconfig file this layer was read from. */
@@ -33,25 +45,32 @@ interface AliasConfig {
 
 /**
  * Reads the project's `tsconfig.json` (following relative `extends` chains)
- * and returns an expander for its path aliases. TypeScript projects publish
- * their internal modules under aliases like `@/components/*`; the expander
- * turns such a specifier back into the file paths it could point at.
+ * and returns its path-alias capabilities. TypeScript projects publish their
+ * internal modules under aliases like `@/components/*`; the expander turns such
+ * a specifier back into the file paths it could point at, and the matcher
+ * reports whether a specifier is one of those aliases at all.
  *
  * The config file is optional: a missing `tsconfig.json` yields an expander
- * that matches nothing. An unreadable or malformed config yields the same
- * empty expander and a warning. Non-relative `extends` targets (npm base
- * configs) are not followed — they do not carry path aliases in practice.
+ * that matches nothing and a matcher that is always `false`. An unreadable or
+ * malformed config yields the same empty result and a warning. Non-relative
+ * `extends` targets (npm base configs) are not followed — they do not carry
+ * path aliases in practice.
  *
  * @param cwd - The project root directory.
  * @param warnings - Mutable accumulator for non-fatal warnings.
- * @returns An expander mapping a non-relative specifier to candidate absolute
- *   base paths.
+ * @returns The project's specifier expander and `paths`-pattern matcher.
  */
-export function readTsconfigAliases(cwd: string, warnings: string[]): AliasExpander {
+export function readTsconfigAliases(cwd: string, warnings: string[]): TsconfigAliases {
   const layers = collectLayers(join(cwd, "tsconfig.json"), cwd, warnings, new Set());
   const config = foldLayers(layers);
-  if (config === null) return () => [];
-  return (specifier) => (specifier.startsWith(".") ? [] : expand(specifier, config));
+  if (config === null) {
+    return { expand: () => [], matchesPathAlias: () => false };
+  }
+  return {
+    expand: (specifier) => (specifier.startsWith(".") ? [] : expand(specifier, config)),
+    matchesPathAlias: (specifier) =>
+      matchPaths(specifier, config.paths, config.pathsBaseDir).length > 0,
+  };
 }
 
 /**
