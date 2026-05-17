@@ -13,6 +13,7 @@ const FIXTURE_DEFINITION_KIND = join(REPO_ROOT, "fixtures", "definition-kind");
 const FIXTURE_PROPS_TYPING = join(REPO_ROOT, "fixtures", "props-typing");
 const FIXTURE_STORYBOOK = join(REPO_ROOT, "fixtures", "storybook");
 const FIXTURE_CODE_CONNECT = join(REPO_ROOT, "fixtures", "code-connect");
+const FIXTURE_TSCONFIG_ALIASES = join(REPO_ROOT, "fixtures", "tsconfig-aliases");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -826,6 +827,19 @@ describe("scan activity log", () => {
     expect(subjectsOf("Solo")).toEqual(["tweak Solo styles", "scaffold"]);
     expect(subjectsOf("PairA")).toEqual(["tweak PairA", "scaffold"]);
     expect(subjectsOf("PairB")).toEqual(["scaffold"]);
+  });
+});
+
+describe("scan against the tsconfig-aliases fixture", () => {
+  it("resolves barrel re-exports written through tsconfig path aliases", () => {
+    const result = scan({ cwd: FIXTURE_TSCONFIG_ALIASES });
+
+    expect(result.components.map((c) => ({ name: c.name, path: c.path }))).toEqual([
+      { name: "Button", path: "src/components/Button/Button.tsx" },
+      { name: "Card", path: "src/components/Card/Card.tsx" },
+      { name: "Modal", path: "src/components/Modal.tsx" },
+    ]);
+    expect(result.warnings).toEqual([]);
   });
 });
 

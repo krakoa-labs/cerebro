@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
+import type { AliasExpander } from "./tsconfig-aliases.js";
 
 const BARREL_BASENAMES = ["index.ts", "index.tsx"];
 const SOURCE_RESOLUTION_EXTS = [".tsx", ".ts"];
@@ -16,11 +17,14 @@ export function findBarrelFile(componentsRoot: string): string | null {
 }
 
 /**
- * Resolves a barrel export source to the component source file it points at.
+ * Resolves a module specifier to the component source file it points at. A
+ * relative specifier resolves against `barrelDir`; a non-relative specifier is
+ * expanded through the project's tsconfig path aliases.
  *
- * @param barrelDir - Absolute directory containing the barrel file.
- * @param specifier - The export source specifier from the barrel.
+ * @param barrelDir - Absolute directory the relative specifier resolves from.
+ * @param specifier - The module specifier from an export or import.
  * @param importedName - The imported binding name, when available.
+ * @param expandAlias - Expander for non-relative (tsconfig-aliased) specifiers.
  * @returns The resolved source file path, or `null` when no supported source
  *   file can be found.
  */
@@ -28,10 +32,29 @@ export function resolveSourcePath(
   barrelDir: string,
   specifier: string,
   importedName: string | null,
+  expandAlias: AliasExpander,
 ): string | null {
-  if (!specifier.startsWith(".")) return null;
-  const base = isAbsolute(specifier) ? specifier : resolve(barrelDir, specifier);
+  if (specifier.startsWith(".")) {
+    return resolveBaseToFile(resolve(barrelDir, specifier), importedName);
+  }
 
+  for (const base of expandAlias(specifier)) {
+    const resolved = resolveBaseToFile(base, importedName);
+    if (resolved !== null) return resolved;
+  }
+  return null;
+}
+
+/**
+ * Resolves a base path (a specifier without extension) to a supported source
+ * file: a direct `.tsx`/`.ts` file, or — when the base is a directory — a
+ * file inside it.
+ *
+ * @param base - The absolute base path to resolve.
+ * @param importedName - The imported binding name, when available.
+ * @returns The resolved source file path, or `null` when none exists.
+ */
+function resolveBaseToFile(base: string, importedName: string | null): string | null {
   const directFile = findExistingFile(SOURCE_RESOLUTION_EXTS.map((ext) => `${base}${ext}`));
   if (directFile !== null) return directFile;
 

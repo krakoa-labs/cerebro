@@ -1,0 +1,10 @@
+{
+  // A design system that publishes its internal modules under path aliases.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+    },
+  },
+}

@@ -18,6 +18,7 @@ import {
   analyzeStoriesForComponent,
 } from "./stories-counter.js";
 import { type TestCounts, ZERO_TESTS, countTestsForComponent } from "./tests-counter.js";
+import { readTsconfigAliases } from "./tsconfig-aliases.js";
 
 export interface ScanOptions {
   cwd: string;
@@ -102,6 +103,8 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   }
   const produceActivityLog = tracksActivityLog && git.available;
 
+  const expandAlias = readTsconfigAliases(cwd, warnings);
+
   // Resolve every export to its source file first: a Component's Git scope
   // depends on how many Components share its directory, which is only known
   // once the whole barrel has been resolved.
@@ -109,7 +112,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const isBarrelLocal = exp.shape === "barrel-local";
     const absolutePath = isBarrelLocal
       ? barrelPath
-      : resolveSourcePath(barrelDir, exp.source as string, exp.importedName);
+      : resolveSourcePath(barrelDir, exp.source as string, exp.importedName, expandAlias);
 
     if (absolutePath === null) {
       warnings.push(`skipped export "${exp.name}": could not resolve "${exp.source}"`);
