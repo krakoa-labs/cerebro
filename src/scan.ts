@@ -4,6 +4,7 @@ import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } 
 import { type FigmaConnection, collectConnectionsForComponent } from "./code-connect-collector.js";
 import { readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
+import { type DependencyContext, collectDependenciesForComponent } from "./dependency-collector.js";
 import { detectDeprecation } from "./deprecation-detector.js";
 import type { ExportLookup } from "./export-resolution.js";
 import { readDocumentUrlSubstitutions } from "./figma-config.js";
@@ -35,6 +36,7 @@ export interface ScannedComponent {
   propsTyping: PropsTyping;
   definitionKind: DefinitionKind;
   activityLog?: ActivityLogEntry[];
+  dependsOn?: string[];
 }
 
 export interface ScanResult {
@@ -105,9 +107,9 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 
   const expandAlias = readTsconfigAliases(cwd, warnings);
 
-  // Resolve every export to its source file first: a Component's Git scope
-  // depends on how many Components share its directory, which is only known
-  // once the whole barrel has been resolved.
+  // Resolve every export to its source file first: a Component's Component
+  // scope depends on how many Components share its directory, which is only
+  // known once the whole barrel has been resolved.
   const resolved = parsed.exports.flatMap((exp) => {
     const isBarrelLocal = exp.shape === "barrel-local";
     const absolutePath = isBarrelLocal
@@ -127,6 +129,20 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const dir = dirname(absolutePath);
     componentsPerDir.set(dir, (componentsPerDir.get(dir) ?? 0) + 1);
   }
+
+  const componentNames = new Set(resolved.map(({ exp }) => exp.name));
+  const pathToComponents = new Map<string, string[]>();
+  for (const { exp, absolutePath } of resolved) {
+    const names = pathToComponents.get(absolutePath);
+    if (names === undefined) pathToComponents.set(absolutePath, [exp.name]);
+    else names.push(exp.name);
+  }
+  const dependencyContext: DependencyContext = {
+    barrelPath,
+    componentNames,
+    pathToComponents,
+    expandAlias,
+  };
 
   const figmaSubstitutions = usesFigmaCodeConnect
     ? readDocumentUrlSubstitutions(cwd, warnings)
@@ -154,9 +170,22 @@ export function scan({ cwd }: ScanOptions): ScanResult {
         ? []
         : collectConnectionsForComponent(absolutePath, warnings, cwd, figmaSubstitutions);
 
+    const componentScope = componentScopeOf(absolutePath, componentsPerDir);
+
     const activityLog = produceActivityLog
-      ? readActivityLog(cwd, gitScopeOf(absolutePath, componentsPerDir, cwd), activityLogDepth)
+      ? readActivityLog(cwd, toPosixPath(relative(cwd, componentScope)), activityLogDepth)
       : undefined;
+
+    const dependsOn =
+      source === null
+        ? undefined
+        : collectDependenciesForComponent(
+            componentScope,
+            exp.name,
+            dependencyContext,
+            warnings,
+            cwd,
+          );
 
     return {
       name: exp.name,
@@ -169,6 +198,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       ...(stories !== undefined ? { stories } : {}),
       ...(figmaConnections !== undefined ? { figmaConnections } : {}),
       ...(activityLog !== undefined ? { activityLog } : {}),
+      ...(dependsOn !== undefined ? { dependsOn } : {}),
     };
   });
 
@@ -186,23 +216,18 @@ export function scan({ cwd }: ScanOptions): ScanResult {
 }
 
 /**
- * Resolves a Component's Git scope — the path its activity log is read over.
- * The scope is the Component's directory when that Component alone resolves
- * its source file there, and the source file itself otherwise.
+ * Resolves a Component's Component scope — the path its activity log is read
+ * over and its Internal dependencies are collected from. The scope is the
+ * Component's directory when that Component alone resolves its source file
+ * there, and the source file itself otherwise.
  *
  * @param absolutePath - The Component's resolved source file.
  * @param componentsPerDir - Count of Components resolving into each directory.
- * @param cwd - Project root, used to format the scope relative to it.
- * @returns The Git scope path, relative to `cwd`.
+ * @returns The absolute Component scope path.
  */
-function gitScopeOf(
-  absolutePath: string,
-  componentsPerDir: Map<string, number>,
-  cwd: string,
-): string {
+function componentScopeOf(absolutePath: string, componentsPerDir: Map<string, number>): string {
   const dir = dirname(absolutePath);
-  const scope = componentsPerDir.get(dir) === 1 ? dir : absolutePath;
-  return toPosixPath(relative(cwd, scope));
+  return componentsPerDir.get(dir) === 1 ? dir : absolutePath;
 }
 
 /**

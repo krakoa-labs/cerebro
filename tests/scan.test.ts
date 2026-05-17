@@ -14,6 +14,7 @@ const FIXTURE_PROPS_TYPING = join(REPO_ROOT, "fixtures", "props-typing");
 const FIXTURE_STORYBOOK = join(REPO_ROOT, "fixtures", "storybook");
 const FIXTURE_CODE_CONNECT = join(REPO_ROOT, "fixtures", "code-connect");
 const FIXTURE_TSCONFIG_ALIASES = join(REPO_ROOT, "fixtures", "tsconfig-aliases");
+const FIXTURE_INTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "internal-dependencies");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -148,6 +149,7 @@ describe("scan", () => {
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        dependsOn: [],
       },
       {
         name: "Mango",
@@ -157,6 +159,7 @@ describe("scan", () => {
         exportShape: "default-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        dependsOn: [],
       },
       {
         name: "Zebra",
@@ -166,6 +169,7 @@ describe("scan", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        dependsOn: [],
       },
     ]);
     expect(result.warnings).toEqual([]);
@@ -250,6 +254,7 @@ describe("scan", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        dependsOn: [],
       },
     ]);
   });
@@ -308,6 +313,7 @@ describe("scan", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        dependsOn: [],
       },
     ]);
   });
@@ -656,6 +662,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        dependsOn: [],
       },
       {
         name: "Card",
@@ -665,6 +672,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "default-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        dependsOn: [],
       },
       {
         name: "Dialog",
@@ -674,6 +682,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "renamed-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        dependsOn: [],
       },
       {
         name: "Tooltip",
@@ -683,6 +692,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        dependsOn: [],
       },
       {
         name: "Variant",
@@ -692,6 +702,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        dependsOn: [],
       },
     ]);
     expect(result.warnings).toEqual([
@@ -840,6 +851,103 @@ describe("scan against the tsconfig-aliases fixture", () => {
       { name: "Modal", path: "src/components/Modal.tsx" },
     ]);
     expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("scan against the internal-dependencies fixture", () => {
+  it("records each Component's internal dependencies across every import shape", () => {
+    const result = scan({ cwd: FIXTURE_INTERNAL_DEPENDENCIES });
+
+    expect(result.components.map((c) => ({ name: c.name, dependsOn: c.dependsOn }))).toEqual([
+      { name: "Button", dependsOn: ["Icon"] },
+      { name: "Card", dependsOn: ["Button", "Icon"] },
+      { name: "Dialog", dependsOn: ["Button", "Icon"] },
+      { name: "Icon", dependsOn: [] },
+      { name: "Modal", dependsOn: ["Icon"] },
+      { name: "Tag", dependsOn: ["Icon"] },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("scan internal dependencies", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-scan-deps-"));
+    writeConfig(cwd, "src/components");
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("omits dependsOn when the component source fails to parse", () => {
+    writeBarrel(cwd, "src/components", `export { Broken } from "./Broken";`);
+    writeFileSync(join(cwd, "src", "components", "Broken.tsx"), "export const Broken = (props: ");
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.name).toBe("Broken");
+    expect(result.components[0]).not.toHaveProperty("dependsOn");
+  });
+
+  it("links an edge to every Component a shared source file backs", () => {
+    writeBarrel(
+      cwd,
+      "src/components",
+      [`export { Field, AsyncField } from "./Field";`, `export { Form } from "./Form";`].join("\n"),
+    );
+    writeFileSync(
+      join(cwd, "src", "components", "Field.tsx"),
+      "export const Field = 1; export const AsyncField = 2;",
+    );
+    writeFileSync(
+      join(cwd, "src", "components", "Form.tsx"),
+      `import { Field } from "./Field";\nexport const Form = () => Field;`,
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components.find((c) => c.name === "Form")?.dependsOn).toEqual([
+      "AsyncField",
+      "Field",
+    ]);
+  });
+
+  it("excludes test files from the Component scope", () => {
+    writeBarrel(
+      cwd,
+      "src/components",
+      [`export { Widget } from "./Widget/Widget";`, `export { Other } from "./Other";`].join("\n"),
+    );
+    mkdirSync(join(cwd, "src", "components", "Widget"));
+    writeFileSync(
+      join(cwd, "src", "components", "Widget", "Widget.tsx"),
+      "export const Widget = 1;",
+    );
+    writeFileSync(
+      join(cwd, "src", "components", "Widget", "Widget.test.tsx"),
+      `import { Other } from "../Other";\nit("x", () => {});`,
+    );
+    writeFileSync(join(cwd, "src", "components", "Other.tsx"), "export const Other = 1;");
+
+    const result = scan({ cwd });
+
+    expect(result.components.find((c) => c.name === "Widget")?.dependsOn).toEqual([]);
+  });
+
+  it("excludes a Component's edge to itself", () => {
+    writeBarrel(cwd, "src/components", `export { Loop } from "./Loop/Loop";`);
+    mkdirSync(join(cwd, "src", "components", "Loop"));
+    writeFileSync(
+      join(cwd, "src", "components", "Loop", "Loop.tsx"),
+      `import { Loop } from "..";\nexport const Loop = () => Loop;`,
+    );
+
+    const result = scan({ cwd });
+
+    expect(result.components[0]?.dependsOn).toEqual([]);
   });
 });
 
