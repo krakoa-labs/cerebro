@@ -56,6 +56,43 @@ describe("detectPropsTyping — typed (named lookup)", () => {
   });
 });
 
+describe("detectPropsTyping — cast-typed (named lookup)", () => {
+  it.each([
+    [
+      "a forwardRef cast to a named component type",
+      "export const Button = forwardRef((props, ref) => null) as ForwardRefComponent;",
+    ],
+    [
+      "a forwardRef cast to a generic component type",
+      'export const Button = forwardRef((props, ref) => null) as ForwardRefComponent<"button", P>;',
+    ],
+    [
+      "a memo cast to a named component type",
+      "export const Button = memo((props) => null) as MemoComponent<P>;",
+    ],
+    ["an arrow cast to a named type", "export const Button = ((props) => null) as Foo;"],
+    [
+      "a satisfies cast to a named type",
+      "export const Button = forwardRef((props, ref) => null) satisfies ForwardRefComponent;",
+    ],
+    [
+      "nested casts to named types",
+      "export const Button = forwardRef((props, ref) => null) as A as B;",
+    ],
+    [
+      "call type arguments surviving an `as any` cast",
+      "export const Button = forwardRef<HTMLDivElement, P>((props, ref) => null) as any;",
+    ],
+  ])("classifies %s as typed", (_label, src) => {
+    expect(detectPropsTyping(parse(src), named)).toBe("typed");
+  });
+
+  it("sees through a non-null assertion to the wrapped component", () => {
+    const src = "export const Button = ((props: P) => null)!;";
+    expect(detectPropsTyping(parse(src), named)).toBe("typed");
+  });
+});
+
 describe("detectPropsTyping — untyped (named lookup)", () => {
   it.each([
     ["an arrow with an unannotated parameter", "export const Button = (props) => null;"],
@@ -71,6 +108,10 @@ describe("detectPropsTyping — untyped (named lookup)", () => {
       "export const Button = forwardRef<HTMLDivElement>((props, ref) => null);",
     ],
     ["a defaulted parameter with no annotation", "export const Button = (props = {}) => null;"],
+    [
+      "a cast to `any` seen through to an unannotated forwardRef",
+      "export const Button = forwardRef((props, ref) => null) as any;",
+    ],
   ])("classifies %s as untyped", (_label, src) => {
     expect(detectPropsTyping(parse(src), named)).toBe("untyped");
   });
@@ -85,6 +126,7 @@ describe("detectPropsTyping — unanalyzed (named lookup)", () => {
   it.each([
     ["a barrel-local string constant", `export const Button = "button";`],
     ["a non-function value", "export const Button = 1;"],
+    ["a cast over a non-component value", "export const Button = 1 as Foo;"],
   ])("classifies %s as unanalyzed", (_label, src) => {
     expect(detectPropsTyping(parse(src), named)).toBe("unanalyzed");
   });

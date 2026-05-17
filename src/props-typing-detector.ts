@@ -10,6 +10,11 @@ export type PropsTyping = "typed" | "untyped" | "unanalyzed";
 // segment is matched.
 const FC_TYPE_NAMES = new Set(["FC", "FunctionComponent"]);
 
+// TypeScript cast expressions: `x as T`, `<T>x`, `x satisfies T`. A `!`
+// non-null assertion is a wrapper too but is handled apart — it names no
+// target type, so it can never carry a props contract.
+const TYPE_CAST_TYPES = new Set(["TSAsExpression", "TSTypeAssertion", "TSSatisfiesExpression"]);
+
 type ComponentFunction =
   | { kind: "function"; fn: unknown }
   // A `forwardRef`/`memo` call whose own type arguments already type the props.
@@ -20,8 +25,9 @@ type ComponentFunction =
  * Detects how the props of the Component the lookup points to are typed,
  * purely from the syntax of its source declaration — no TypeScript type
  * resolution. Returns `typed` when a type annotation governs the props (a
- * parameter annotation, an `FC`/`FunctionComponent` variable annotation, or
- * the props type argument of a `forwardRef`/`memo` wrapper), `untyped` when a
+ * parameter annotation, an `FC`/`FunctionComponent` variable annotation, the
+ * props type argument of a `forwardRef`/`memo` wrapper, or a cast to a named
+ * type — `forwardRef(…) as ForwardRefComponent<…>`), `untyped` when a
  * function component with a props parameter carries no annotation at all, and
  * `unanalyzed` when no analyzable function-component declaration can be
  * identified (class components, deeply-wrapped HOCs, barrel-local
@@ -68,14 +74,39 @@ function classifyValue(value: unknown, declaredType: unknown): PropsTyping {
 
 /**
  * Resolves a value node to the function component it represents, unwrapping a
- * single `forwardRef`/`memo` layer. A wrapper whose own type arguments cover
- * the props short-circuits to `typed-wrapper`.
+ * single `forwardRef`/`memo` layer and seeing through TypeScript expression
+ * wrappers. A cast to a named type — `forwardRef(…) as ForwardRefComponent<…>`,
+ * the polymorphic-ref typing workaround — is an explicit props contract and
+ * short-circuits to `typed-wrapper` once the cast is confirmed to wrap a
+ * component. A `!` assertion or a cast to a type that names no contract
+ * (`as any`, `as () => JSX.Element`) carries no props information and is seen
+ * through to the value beneath.
  *
  * @param value - The value node to resolve.
  * @returns The resolved component function, a typed-wrapper marker, or `none`.
  */
 function resolveComponentFunction(value: unknown): ComponentFunction {
+  const castInner = namedTypeCastExpression(value);
+  if (castInner !== null) {
+    // The cast names a type for the value; trust it as the props contract,
+    // but only once the wrapped expression is itself a component — a cast
+    // over a non-component value (`config as Settings`) types no props.
+    return resolveComponentFunction(castInner).kind === "none"
+      ? { kind: "none" }
+      : { kind: "typed-wrapper" };
+  }
+
   const type = getProp(value, "type");
+
+  // Parentheses, a `!` assertion, and a cast whose target names no props
+  // contract are all transparent: see through them to the value they wrap.
+  if (
+    type === "ParenthesizedExpression" ||
+    type === "TSNonNullExpression" ||
+    (typeof type === "string" && TYPE_CAST_TYPES.has(type))
+  ) {
+    return resolveComponentFunction(getProp(value, "expression"));
+  }
 
   if (
     type === "FunctionDeclaration" ||
@@ -88,6 +119,23 @@ function resolveComponentFunction(value: unknown): ComponentFunction {
   if (type === "CallExpression") return resolveWrappedComponent(value);
 
   return { kind: "none" };
+}
+
+/**
+ * When `node` is a TypeScript cast to a named type reference (`x as Foo`,
+ * `x as Foo<Bar>`, `<Foo>x`, `x satisfies Foo`), returns the expression the
+ * cast wraps — the cast is an explicit type annotation on that expression.
+ * Returns `null` for any other node, and for casts whose target is not a
+ * named type: `as any`, `as () => void`, `as { … }` name no props contract.
+ *
+ * @param node - The value node to inspect.
+ * @returns The wrapped expression, or `null` when `node` is not such a cast.
+ */
+function namedTypeCastExpression(node: unknown): unknown {
+  const type = getProp(node, "type");
+  if (typeof type !== "string" || !TYPE_CAST_TYPES.has(type)) return null;
+  if (getProp(getProp(node, "typeAnnotation"), "type") !== "TSTypeReference") return null;
+  return getProp(node, "expression") ?? null;
 }
 
 /**
