@@ -937,6 +937,28 @@ describe("scan internal dependencies", () => {
     expect(result.components.find((c) => c.name === "Widget")?.dependsOn).toEqual([]);
   });
 
+  it("excludes __storybook__ support files from the Component scope", () => {
+    writeBarrel(
+      cwd,
+      "src/components",
+      [`export { Widget } from "./Widget/Widget";`, `export { Other } from "./Other";`].join("\n"),
+    );
+    mkdirSync(join(cwd, "src", "components", "Widget", "__storybook__"), { recursive: true });
+    writeFileSync(
+      join(cwd, "src", "components", "Widget", "Widget.tsx"),
+      "export const Widget = 1;",
+    );
+    writeFileSync(
+      join(cwd, "src", "components", "Widget", "__storybook__", "decorator.tsx"),
+      `import { Other } from "../../Other";\nexport const decorator = () => Other;`,
+    );
+    writeFileSync(join(cwd, "src", "components", "Other.tsx"), "export const Other = 1;");
+
+    const result = scan({ cwd });
+
+    expect(result.components.find((c) => c.name === "Widget")?.dependsOn).toEqual([]);
+  });
+
   it("excludes a Component's edge to itself", () => {
     writeBarrel(cwd, "src/components", `export { Loop } from "./Loop/Loop";`);
     mkdirSync(join(cwd, "src", "components", "Loop"));

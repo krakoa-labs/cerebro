@@ -24,8 +24,13 @@ const EXCLUDED_SCOPE_SUFFIXES = [
   ".figma.ts",
 ];
 
-/** Directory names excluded from a Component scope walk. */
-const EXCLUDED_SCOPE_DIRS = new Set(["__tests__"]);
+/**
+ * Directory names excluded from a Component scope walk: `__tests__` holds test
+ * files, `__storybook__` holds Storybook support files (decorators, helpers).
+ * An import in either is that file depending on a Component, not the Component
+ * depending on anything.
+ */
+const EXCLUDED_SCOPE_DIRS = new Set(["__tests__", "__storybook__"]);
 
 /** Shared scan state the dependency collector resolves imports against. */
 export interface DependencyContext {
