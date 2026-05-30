@@ -9,6 +9,7 @@ import { detectDeprecation } from "./deprecation-detector.js";
 import type { ExportLookup } from "./export-resolution.js";
 import { readDocumentUrlSubstitutions } from "./figma-config.js";
 import { type ActivityLogEntry, type GitAvailability, inspectGit, readActivityLog } from "./git.js";
+import { detectMemoWithChildren } from "./memo-children-detector.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
@@ -36,6 +37,7 @@ export interface ScannedComponent {
   exportShape: ExportShape;
   propsTyping: PropsTyping;
   definitionKind: DefinitionKind;
+  memoWithChildren: boolean;
   activityLog?: ActivityLogEntry[];
   dependsOn?: string[];
   externalDependencies?: string[];
@@ -158,6 +160,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const deprecated = source === null ? false : detectDeprecation(source, lookup);
     const propsTyping = source === null ? "unanalyzed" : detectPropsTyping(source, lookup);
     const definitionKind = source === null ? "unanalyzed" : detectDefinitionKind(source, lookup);
+    const memoWithChildren = source === null ? false : detectMemoWithChildren(source, lookup);
 
     const stories = !usesStorybook
       ? undefined
@@ -196,6 +199,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       exportShape: exp.shape,
       propsTyping,
       definitionKind,
+      memoWithChildren,
       ...(stories !== undefined ? { stories } : {}),
       ...(figmaConnections !== undefined ? { figmaConnections } : {}),
       ...(activityLog !== undefined ? { activityLog } : {}),

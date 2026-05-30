@@ -1,0 +1,3 @@
+# Memo with children fires only on the provably-inert shape
+
+Cerebro flags a `memo()`-wrapped Component for the children footgun only when there is no custom comparator and the props declare element-typed children (`ReactNode`, `ReactElement`, `JSX.Element`, or arrays thereof). It deliberately does **not** flag the escape-hatch cases — a custom comparator (`memo(C, areEqual)`) or narrowly-primitive `string`/`number` children — because there the memoization can legitimately work, and flagging would manufacture false debt for a lead. This mirrors ADR-0010 (exclude `react`) and ADR-0011 (trust a cast to a named type): the indicator under-reports in the quiet direction (see ADR-0005) rather than fabricate debt.

@@ -62,6 +62,7 @@ program
           deprecated: acc.deprecated + (c.deprecated ? 1 : 0),
           untyped: acc.untyped + (c.propsTyping === "untyped" ? 1 : 0),
           classComponents: acc.classComponents + (c.definitionKind === "class" ? 1 : 0),
+          memoWithChildren: acc.memoWithChildren + (c.memoWithChildren ? 1 : 0),
         }),
         {
           total: 0,
@@ -74,6 +75,7 @@ program
           deprecated: 0,
           untyped: 0,
           classComponents: 0,
+          memoWithChildren: 0,
         },
       );
 
@@ -90,6 +92,9 @@ program
       const classNoun = totals.classComponents === 1 ? "component" : "components";
       const classFragment =
         totals.classComponents > 0 ? ` ${totals.classComponents} class ${classNoun}.` : "";
+      const memoNoun = totals.memoWithChildren === 1 ? "memo" : "memos";
+      const memoFragment =
+        totals.memoWithChildren > 0 ? ` ${totals.memoWithChildren} inert ${memoNoun}.` : "";
       const gitFragment = result.git.available
         ? result.git.shallow
           ? " Git: shallow repository."
@@ -97,7 +102,7 @@ program
         : " Git: not a repository.";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${gitFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${memoFragment}${gitFragment}\n`,
         ),
       );
 

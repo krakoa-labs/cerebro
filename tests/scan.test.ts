@@ -16,6 +16,7 @@ const FIXTURE_CODE_CONNECT = join(REPO_ROOT, "fixtures", "code-connect");
 const FIXTURE_TSCONFIG_ALIASES = join(REPO_ROOT, "fixtures", "tsconfig-aliases");
 const FIXTURE_INTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "internal-dependencies");
 const FIXTURE_EXTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "external-dependencies");
+const FIXTURE_MEMO_WITH_CHILDREN = join(REPO_ROOT, "fixtures", "memo-with-children");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -150,6 +151,7 @@ describe("scan", () => {
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -161,6 +163,7 @@ describe("scan", () => {
         exportShape: "default-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -172,6 +175,7 @@ describe("scan", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -258,6 +262,7 @@ describe("scan", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -318,6 +323,7 @@ describe("scan", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -699,6 +705,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "named-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -710,6 +717,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "default-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -721,6 +729,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "renamed-reexport",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -732,6 +741,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
         definitionKind: "other",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -743,6 +753,7 @@ describe("scan against the barrel-basics fixture", () => {
         exportShape: "barrel-local",
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
+        memoWithChildren: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -1056,6 +1067,28 @@ describe("scan against the definition-kind fixture", () => {
       { name: "StyledBox", definitionKind: "other" },
       { name: "Token", definitionKind: "other" },
       { name: "WrappedTabs", definitionKind: "function" },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("scan against the memo-with-children fixture", () => {
+  it("flags memo()-wrapped Components with element-typed children", () => {
+    const result = scan({ cwd: FIXTURE_MEMO_WITH_CHILDREN });
+
+    expect(
+      result.components.map((c) => ({ name: c.name, memoWithChildren: c.memoWithChildren })),
+    ).toEqual([
+      { name: "Box", memoWithChildren: true },
+      { name: "Cached", memoWithChildren: false },
+      { name: "Card", memoWithChildren: true },
+      { name: "Code", memoWithChildren: false },
+      { name: "Inline", memoWithChildren: true },
+      { name: "Panel", memoWithChildren: true },
+      { name: "Plain", memoWithChildren: false },
+      { name: "Spinner", memoWithChildren: false },
+      { name: "Untyped", memoWithChildren: false },
+      { name: "Wrapper", memoWithChildren: true },
     ]);
     expect(result.warnings).toEqual([]);
   });
