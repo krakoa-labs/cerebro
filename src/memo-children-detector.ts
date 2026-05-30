@@ -63,7 +63,18 @@ export function detectMemoWithChildren(source: ParsedSource, lookup: ExportLooku
   if (!isMemoized(exported.value, lookup, body)) return false;
 
   const propsType = propsTypeOfComponent(exported.value, body, new Set());
-  return propsType !== null && declaresElementChildren(propsType, body);
+  const members = propsType === null ? null : propsTypeMembers(propsType, body);
+
+  // When the props contract is readable, it is authoritative: flag only on
+  // element-typed children, trusting a primitive or absent `children` member as
+  // a genuine non-footgun. When it cannot be read from source — a polymorphic
+  // cast (`as ForwardRefComponent<…>`) or a utility/mapped type (`Override<…>`)
+  // whose members do not resolve — fall back to the usage signal: a component
+  // that destructures `children` out of its props accepts children, the shape
+  // that defeats the memo (see ADR-0014).
+  if (members !== null) return membersDeclareElementChildren(members);
+
+  return componentDestructuresChildren(exported.value, body, new Set());
 }
 
 /**
@@ -297,21 +308,15 @@ function firstParameterType(fn: unknown): unknown {
 }
 
 /**
- * Tests whether a props type declares a `children` member typed to admit React
- * elements. Resolves the props type to its member list — an inline object type,
- * or a `TSTypeReference` to an `interface`/`type` declared in the same file —
- * then inspects the `children` member's annotation. A props type imported from
- * another file, or built from `extends`/intersection/union, yields no readable
- * members and does not flag (the quiet direction).
+ * Tests whether a resolved props member list declares a `children` member typed
+ * to admit React elements. The members are an authoritative reading of the
+ * props contract (an inline object type, or a same-file `interface`/`type`), so
+ * a missing or primitively-typed `children` member is a genuine non-footgun.
  *
- * @param propsType - The props type AST node.
- * @param body - Top-level statements, used to resolve a named props type.
+ * @param members - The resolved props member signatures.
  * @returns `true` when an element-typed `children` member is present.
  */
-function declaresElementChildren(propsType: unknown, body: unknown[]): boolean {
-  const members = propsTypeMembers(propsType, body);
-  if (members === null) return false;
-
+function membersDeclareElementChildren(members: unknown[]): boolean {
   const children = members.find(
     (member) =>
       getProp(member, "type") === "TSPropertySignature" && isChildrenKey(getProp(member, "key")),
@@ -320,6 +325,84 @@ function declaresElementChildren(propsType: unknown, body: unknown[]): boolean {
 
   const annotation = getProp(children, "typeAnnotation");
   return isElementType(getProp(annotation, "typeAnnotation"));
+}
+
+/**
+ * Tests whether the memo-wrapped Component destructures a `children` binding out
+ * of its props parameter — the usage fallback for when the props type cannot be
+ * read from source (see ADR-0014). Walks the same wrapper / identifier / call
+ * chain as `propsTypeOfComponent` to reach the inner function, then inspects its
+ * first parameter's *pattern* (rather than its type) for a destructured
+ * `children` property. A component that names `children` among the props it
+ * pulls apart accepts children, the shape that defeats the memo. Forms that do
+ * not destructure in the parameter — an untouched `props` parameter, body-level
+ * destructuring, or `props.children` access — stay unflagged (the quiet
+ * direction). `seen` guards against a self-referential binding cycle.
+ *
+ * @param value - The value the lookup resolved to, or a node nested within its
+ *   wrappers.
+ * @param body - Top-level statements, used to resolve an identifier reference.
+ * @param seen - Identifier names already resolved on this path.
+ * @returns `true` when the inner function destructures `children` from its props
+ *   parameter.
+ */
+function componentDestructuresChildren(
+  value: unknown,
+  body: unknown[],
+  seen: Set<string>,
+): boolean {
+  const node = unwrapTransparent(value);
+  const type = getProp(node, "type");
+
+  if (type === "Identifier") {
+    const name = getProp(node, "name");
+    if (typeof name !== "string" || seen.has(name)) return false;
+    seen.add(name);
+
+    const binding = resolveNamedBinding(body, name);
+    return binding !== null && componentDestructuresChildren(binding.value, body, seen);
+  }
+
+  if (type === "CallExpression") {
+    if (wrapperKind(getProp(node, "callee")) === null) return false;
+
+    const args = getProp(node, "arguments");
+    return componentDestructuresChildren(Array.isArray(args) ? args[0] : null, body, seen);
+  }
+
+  if (
+    type === "ArrowFunctionExpression" ||
+    type === "FunctionExpression" ||
+    type === "FunctionDeclaration"
+  ) {
+    return firstParameterDestructuresChildren(node);
+  }
+
+  return false;
+}
+
+/**
+ * Tests whether a function's first parameter — the props parameter — is an
+ * object pattern that destructures a `children` property.
+ *
+ * @param fn - The function node.
+ * @returns `true` when the first parameter destructures `children`.
+ */
+function firstParameterDestructuresChildren(fn: unknown): boolean {
+  const params = getProp(fn, "params");
+  if (!Array.isArray(params) || params.length === 0) return false;
+
+  const param = params[0];
+  if (getProp(param, "type") !== "ObjectPattern") return false;
+
+  const properties = getProp(param, "properties");
+  return (
+    Array.isArray(properties) &&
+    properties.some(
+      (property) =>
+        getProp(property, "type") === "Property" && isChildrenKey(getProp(property, "key")),
+    )
+  );
 }
 
 /**

@@ -99,6 +99,56 @@ describe("detectMemoWithChildren — fires (memo wrapping a named component)", (
   });
 });
 
+describe("detectMemoWithChildren — fires (usage fallback when props unreadable)", () => {
+  it.each([
+    [
+      "a polymorphic cast whose props live in the cast type argument",
+      'const Base = forwardRef(({ children }, ref) => null) as ForwardRefComponent<"li", P>;\nexport const Button = memo(Base) as MemoComponent<"li", P>;',
+    ],
+    [
+      "an inline polymorphic cast with destructured children",
+      'export const Button = memo(forwardRef(({ children }, ref) => null)) as MemoComponent<"li", P>;',
+    ],
+    [
+      "a utility/mapped type whose members do not resolve",
+      "type P = Override<HTMLAttributes, BaseProps>;\nexport const Button = memo(({ children }: P) => null);",
+    ],
+    [
+      "a forwardRef typed by an unresolvable utility type",
+      "type P = Override<HTMLAttributes, BaseProps>;\nexport const Button = memo(forwardRef<HTMLDivElement, P>(({ children }, ref) => null));",
+    ],
+    [
+      "children destructured alongside other props and a rest element",
+      'export const Button = memo(({ tag = "li", children, ...rest }: P) => null);',
+    ],
+  ])("flags %s", (_label, src) => {
+    expect(detectMemoWithChildren(parse(src), named)).toBe(true);
+  });
+});
+
+describe("detectMemoWithChildren — does not fire (usage fallback boundary)", () => {
+  it.each([
+    [
+      "a readable string children member, even when destructured (the type is authoritative)",
+      "export const Button = memo(({ children }: { children: string }) => null);",
+    ],
+    [
+      "an unreadable utility type whose props parameter is not destructured",
+      "type P = Override<HTMLAttributes, BaseProps>;\nexport const Button = memo((props: P) => null);",
+    ],
+    [
+      "a polymorphic cast whose props parameter is not destructured",
+      'export const Button = memo(forwardRef((props, ref) => null)) as MemoComponent<"li", P>;',
+    ],
+    [
+      "an unreadable type that destructures a prop other than children",
+      "type P = Override<HTMLAttributes, BaseProps>;\nexport const Button = memo(({ title }: P) => null);",
+    ],
+  ])("does not flag %s", (_label, src) => {
+    expect(detectMemoWithChildren(parse(src), named)).toBe(false);
+  });
+});
+
 describe("detectMemoWithChildren — fires (memo applied to a binding at its export)", () => {
   const base = { kind: "named", name: "Base" } as const;
 
