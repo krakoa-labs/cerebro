@@ -17,6 +17,7 @@ const FIXTURE_TSCONFIG_ALIASES = join(REPO_ROOT, "fixtures", "tsconfig-aliases")
 const FIXTURE_INTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "internal-dependencies");
 const FIXTURE_EXTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "external-dependencies");
 const FIXTURE_MEMO_WITH_CHILDREN = join(REPO_ROOT, "fixtures", "memo-with-children");
+const FIXTURE_NESTED_COMPONENT = join(REPO_ROOT, "fixtures", "nested-component-definition");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -152,6 +153,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -164,6 +166,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -176,6 +179,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -263,6 +267,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -324,6 +329,7 @@ describe("scan", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -706,6 +712,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -718,6 +725,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -730,6 +738,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -742,6 +751,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "other",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -754,6 +764,7 @@ describe("scan against the barrel-basics fixture", () => {
         propsTyping: "unanalyzed",
         definitionKind: "unanalyzed",
         memoWithChildren: false,
+        nestedComponentDefinition: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -1092,6 +1103,26 @@ describe("scan against the memo-with-children fixture", () => {
       { name: "Spinner", memoWithChildren: false },
       { name: "Untyped", memoWithChildren: false },
       { name: "Wrapper", memoWithChildren: true },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("scan against the nested-component-definition fixture", () => {
+  it("flags Components that define a component inside their render body", () => {
+    const result = scan({ cwd: FIXTURE_NESTED_COMPONENT });
+
+    expect(
+      result.components.map((c) => ({
+        name: c.name,
+        nestedComponentDefinition: c.nestedComponentDefinition,
+      })),
+    ).toEqual([
+      { name: "Card", nestedComponentDefinition: true },
+      { name: "Label", nestedComponentDefinition: false },
+      { name: "Legacy", nestedComponentDefinition: false },
+      { name: "Panel", nestedComponentDefinition: true },
+      { name: "Plain", nestedComponentDefinition: false },
     ]);
     expect(result.warnings).toEqual([]);
   });

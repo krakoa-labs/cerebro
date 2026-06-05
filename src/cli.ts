@@ -63,6 +63,8 @@ program
           untyped: acc.untyped + (c.propsTyping === "untyped" ? 1 : 0),
           classComponents: acc.classComponents + (c.definitionKind === "class" ? 1 : 0),
           memoWithChildren: acc.memoWithChildren + (c.memoWithChildren ? 1 : 0),
+          nestedComponentDefinition:
+            acc.nestedComponentDefinition + (c.nestedComponentDefinition ? 1 : 0),
         }),
         {
           total: 0,
@@ -76,6 +78,7 @@ program
           untyped: 0,
           classComponents: 0,
           memoWithChildren: 0,
+          nestedComponentDefinition: 0,
         },
       );
 
@@ -95,6 +98,11 @@ program
       const memoNoun = totals.memoWithChildren === 1 ? "memo" : "memos";
       const memoFragment =
         totals.memoWithChildren > 0 ? ` ${totals.memoWithChildren} inert ${memoNoun}.` : "";
+      const nestingNoun = totals.nestedComponentDefinition === 1 ? "component" : "components";
+      const nestingFragment =
+        totals.nestedComponentDefinition > 0
+          ? ` ${totals.nestedComponentDefinition} nesting ${nestingNoun}.`
+          : "";
       const gitFragment = result.git.available
         ? result.git.shallow
           ? " Git: shallow repository."
@@ -102,7 +110,7 @@ program
         : " Git: not a repository.";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${memoFragment}${gitFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${memoFragment}${nestingFragment}${gitFragment}\n`,
         ),
       );
 

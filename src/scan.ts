@@ -10,6 +10,7 @@ import type { ExportLookup } from "./export-resolution.js";
 import { readDocumentUrlSubstitutions } from "./figma-config.js";
 import { type ActivityLogEntry, type GitAvailability, inspectGit, readActivityLog } from "./git.js";
 import { detectMemoWithChildren } from "./memo-children-detector.js";
+import { detectNestedComponentDefinition } from "./nested-component-detector.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
 import { toPosixPath } from "./paths.js";
 import { type PropsTyping, detectPropsTyping } from "./props-typing-detector.js";
@@ -38,6 +39,7 @@ export interface ScannedComponent {
   propsTyping: PropsTyping;
   definitionKind: DefinitionKind;
   memoWithChildren: boolean;
+  nestedComponentDefinition: boolean;
   activityLog?: ActivityLogEntry[];
   dependsOn?: string[];
   externalDependencies?: string[];
@@ -161,6 +163,8 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const propsTyping = source === null ? "unanalyzed" : detectPropsTyping(source, lookup);
     const definitionKind = source === null ? "unanalyzed" : detectDefinitionKind(source, lookup);
     const memoWithChildren = source === null ? false : detectMemoWithChildren(source, lookup);
+    const nestedComponentDefinition =
+      source === null ? false : detectNestedComponentDefinition(source, lookup);
 
     const stories = !usesStorybook
       ? undefined
@@ -200,6 +204,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       propsTyping,
       definitionKind,
       memoWithChildren,
+      nestedComponentDefinition,
       ...(stories !== undefined ? { stories } : {}),
       ...(figmaConnections !== undefined ? { figmaConnections } : {}),
       ...(activityLog !== undefined ? { activityLog } : {}),
