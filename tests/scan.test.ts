@@ -18,6 +18,7 @@ const FIXTURE_INTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "internal-depe
 const FIXTURE_EXTERNAL_DEPENDENCIES = join(REPO_ROOT, "fixtures", "external-dependencies");
 const FIXTURE_MEMO_WITH_CHILDREN = join(REPO_ROOT, "fixtures", "memo-with-children");
 const FIXTURE_NESTED_COMPONENT = join(REPO_ROOT, "fixtures", "nested-component-definition");
+const FIXTURE_FORWARD_REF = join(REPO_ROOT, "fixtures", "forward-ref-without-ref");
 
 const ZERO_TESTS = { total: 0, skipped: 0, only: 0 };
 const ZERO_STORIES = { total: 0, csf1: 0, csf2: 0, csf3: 0, other: 0 };
@@ -154,6 +155,7 @@ describe("scan", () => {
         definitionKind: "other",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -167,6 +169,7 @@ describe("scan", () => {
         definitionKind: "unanalyzed",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -180,6 +183,7 @@ describe("scan", () => {
         definitionKind: "unanalyzed",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -268,6 +272,7 @@ describe("scan", () => {
         definitionKind: "unanalyzed",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -330,6 +335,7 @@ describe("scan", () => {
         definitionKind: "unanalyzed",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -713,6 +719,7 @@ describe("scan against the barrel-basics fixture", () => {
         definitionKind: "other",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -726,6 +733,7 @@ describe("scan against the barrel-basics fixture", () => {
         definitionKind: "other",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -739,6 +747,7 @@ describe("scan against the barrel-basics fixture", () => {
         definitionKind: "other",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -752,6 +761,7 @@ describe("scan against the barrel-basics fixture", () => {
         definitionKind: "other",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -765,6 +775,7 @@ describe("scan against the barrel-basics fixture", () => {
         definitionKind: "unanalyzed",
         memoWithChildren: false,
         nestedComponentDefinition: false,
+        forwardRefWithoutRef: false,
         dependsOn: [],
         externalDependencies: [],
       },
@@ -1123,6 +1134,27 @@ describe("scan against the nested-component-definition fixture", () => {
       { name: "Legacy", nestedComponentDefinition: false },
       { name: "Panel", nestedComponentDefinition: true },
       { name: "Plain", nestedComponentDefinition: false },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("scan against the forward-ref-without-ref fixture", () => {
+  it("flags forwardRef Components that never use their ref", () => {
+    const result = scan({ cwd: FIXTURE_FORWARD_REF });
+
+    expect(
+      result.components.map((c) => ({
+        name: c.name,
+        forwardRefWithoutRef: c.forwardRefWithoutRef,
+      })),
+    ).toEqual([
+      { name: "Dropped", forwardRefWithoutRef: true },
+      { name: "Imperative", forwardRefWithoutRef: false },
+      { name: "MemoWrapped", forwardRefWithoutRef: true },
+      { name: "NoRefParam", forwardRefWithoutRef: true },
+      { name: "Plain", forwardRefWithoutRef: false },
+      { name: "Used", forwardRefWithoutRef: false },
     ]);
     expect(result.warnings).toEqual([]);
   });

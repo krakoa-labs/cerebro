@@ -8,6 +8,7 @@ import { type DependencyContext, collectDependenciesForComponent } from "./depen
 import { detectDeprecation } from "./deprecation-detector.js";
 import type { ExportLookup } from "./export-resolution.js";
 import { readDocumentUrlSubstitutions } from "./figma-config.js";
+import { detectForwardRefWithoutRef } from "./forward-ref-detector.js";
 import { type ActivityLogEntry, type GitAvailability, inspectGit, readActivityLog } from "./git.js";
 import { detectMemoWithChildren } from "./memo-children-detector.js";
 import { detectNestedComponentDefinition } from "./nested-component-detector.js";
@@ -40,6 +41,7 @@ export interface ScannedComponent {
   definitionKind: DefinitionKind;
   memoWithChildren: boolean;
   nestedComponentDefinition: boolean;
+  forwardRefWithoutRef: boolean;
   activityLog?: ActivityLogEntry[];
   dependsOn?: string[];
   externalDependencies?: string[];
@@ -165,6 +167,8 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     const memoWithChildren = source === null ? false : detectMemoWithChildren(source, lookup);
     const nestedComponentDefinition =
       source === null ? false : detectNestedComponentDefinition(source, lookup);
+    const forwardRefWithoutRef =
+      source === null ? false : detectForwardRefWithoutRef(source, lookup);
 
     const stories = !usesStorybook
       ? undefined
@@ -205,6 +209,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
       definitionKind,
       memoWithChildren,
       nestedComponentDefinition,
+      forwardRefWithoutRef,
       ...(stories !== undefined ? { stories } : {}),
       ...(figmaConnections !== undefined ? { figmaConnections } : {}),
       ...(activityLog !== undefined ? { activityLog } : {}),

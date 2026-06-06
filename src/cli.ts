@@ -65,6 +65,7 @@ program
           memoWithChildren: acc.memoWithChildren + (c.memoWithChildren ? 1 : 0),
           nestedComponentDefinition:
             acc.nestedComponentDefinition + (c.nestedComponentDefinition ? 1 : 0),
+          forwardRefWithoutRef: acc.forwardRefWithoutRef + (c.forwardRefWithoutRef ? 1 : 0),
         }),
         {
           total: 0,
@@ -79,6 +80,7 @@ program
           classComponents: 0,
           memoWithChildren: 0,
           nestedComponentDefinition: 0,
+          forwardRefWithoutRef: 0,
         },
       );
 
@@ -103,6 +105,11 @@ program
         totals.nestedComponentDefinition > 0
           ? ` ${totals.nestedComponentDefinition} nesting ${nestingNoun}.`
           : "";
+      const refNoun = totals.forwardRefWithoutRef === 1 ? "ref" : "refs";
+      const refFragment =
+        totals.forwardRefWithoutRef > 0
+          ? ` ${totals.forwardRefWithoutRef} dropped ${refNoun}.`
+          : "";
       const gitFragment = result.git.available
         ? result.git.shallow
           ? " Git: shallow repository."
@@ -110,7 +117,7 @@ program
         : " Git: not a repository.";
       process.stderr.write(
         pc.dim(
-          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${memoFragment}${nestingFragment}${gitFragment}\n`,
+          `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${memoFragment}${nestingFragment}${refFragment}${gitFragment}\n`,
         ),
       );
 

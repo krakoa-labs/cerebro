@@ -1,0 +1,17 @@
+# ForwardRef without ref flags an unused or absent ref parameter
+
+Cerebro flags a `forwardRef`-wrapped Component for the dropped-ref footgun when its render function never uses the forwarded `ref` — the second parameter is absent, or present but its name appears nowhere in the body. A `forwardRef` wrapper promises to forward a consumer's ref onward; a render function that ignores it leaves the consumer's ref pointing nowhere, and `ref`-based focus, measurement, and imperative handles silently fail. The question was how to read "uses the ref" soundly from the AST alone.
+
+The signal is a name search over the render function's body, distinct from the other footgun detectors in two ways. First, it descends through **everything**, including nested functions: a ref is captured by closure, so its only use is frequently inside an effect, a callback, a `useImperativeHandle(ref, …)`, or a JSX `ref={ref}`. (This is the deliberate opposite of the nested-component detector, whose "returns JSX" search stops at function boundaries.) Second, it matches `Identifier` nodes only, so a JSX attribute *name* — the `ref` in `ref={…}` — does not register as a use while the forwarded *value* does. When the name appears anywhere, the ref is considered used and the Component is not flagged.
+
+Shadowing is not analyzed. A deeper scope that re-declares its own `ref` would make a name match there read as a use of the forwarded ref, suppressing a flag that might be warranted. Resolving this needs scope tracking the parser exposes only structurally, and the failure is in the quiet direction (ADR-0005) — a missed footgun, never a fabricated one — so it is left unbuilt until a real case demands it. An underscore-prefixed parameter (`_ref`) is treated like any other name: it is flagged when unused. Unlike `memoWithChildren`'s custom-comparator exemption (ADR-0013), where the comparator changes runtime behaviour and so genuinely averts the footgun, an underscore changes nothing — the consumer's ref is still dropped — so honouring it would silence real defects for a cosmetic convention.
+
+A `forwardRef` must actually be present for the indicator to fire; an ordinary function with a stray second parameter is not this footgun. The wrapper is located through the same machinery the prior detectors established — seen through transparent casts and an enclosing `memo`, followed across a same-file binding, and recognized in the export-binding shape (`const C = …; export default forwardRef(C)`) where the lookup resolves to the inner declaration rather than the wrapper. A Component that is not `forwardRef`-wrapped, a class component, or a render function imported from another module reads `false` — the quiet direction.
+
+## Considered Options
+
+Honouring an underscore-prefixed ref name as an opt-out was considered and rejected, as above: it documents the dropped ref rather than remedying it.
+
+Requiring the render function to return JSX before flagging — to avoid misreading a non-component two-parameter function — was considered and judged redundant: the `forwardRef` wrapper is itself the proof that the value is a component, so the return shape adds nothing and would only narrow recall.
+
+Scope-aware shadow analysis was deferred. It would let a flag survive a deeper `ref` re-declaration, but it reimplements binding resolution over a structural AST for a case absent from the validating design system, and its omission only under-reports. It is left until a concrete miss justifies the machinery.
