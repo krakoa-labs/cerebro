@@ -91,6 +91,51 @@ describe("init", () => {
     expect(config.tracksActivityLog).toBe(true);
   });
 
+  it("adds the cache directory to .gitignore in a git repo, creating the file", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    spawnSync("git", ["init"], { cwd });
+
+    const result = init({ cwd, componentsPath: "src/components" });
+
+    expect(result.gitignoreUpdated).toBe(true);
+    expect(readFileSync(join(cwd, ".gitignore"), "utf8")).toBe(".cerebro/\n");
+  });
+
+  it("appends the cache entry to an existing .gitignore lacking a trailing newline", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    spawnSync("git", ["init"], { cwd });
+    writeFileSync(join(cwd, ".gitignore"), "node_modules\ndist");
+
+    const result = init({ cwd, componentsPath: "src/components" });
+
+    expect(result.gitignoreUpdated).toBe(true);
+    expect(readFileSync(join(cwd, ".gitignore"), "utf8")).toBe("node_modules\ndist\n.cerebro/\n");
+  });
+
+  it("leaves .gitignore untouched when the cache entry is already present", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    spawnSync("git", ["init"], { cwd });
+    writeFileSync(join(cwd, ".gitignore"), "node_modules\n.cerebro/\n");
+
+    const result = init({ cwd, componentsPath: "src/components" });
+
+    expect(result.gitignoreUpdated).toBe(false);
+    expect(readFileSync(join(cwd, ".gitignore"), "utf8")).toBe("node_modules\n.cerebro/\n");
+  });
+
+  it("does not touch .gitignore when cwd is not a git repository", () => {
+    mkdirSync(join(cwd, "src", "components"), { recursive: true });
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+
+    const result = init({ cwd, componentsPath: "src/components" });
+
+    expect(result.gitignoreUpdated).toBe(false);
+    expect(existsSync(join(cwd, ".gitignore"))).toBe(false);
+  });
+
   it("normalizes absolute paths to relative", () => {
     const absoluteComponents = join(cwd, "components");
     mkdirSync(absoluteComponents);

@@ -1,8 +1,9 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { CONFIG_FILENAME, DEFAULT_ACTIVITY_LOG_DEPTH, writeConfig } from "./config.js";
 import { detectGitRepo } from "./git.js";
 import { toPosixPath } from "./paths.js";
+import { CACHE_DIR } from "./scan-cache.js";
 
 export interface InitOptions {
   cwd: string;
@@ -15,6 +16,7 @@ export interface InitResult {
   usesStorybook: boolean;
   usesFigmaCodeConnect: boolean;
   tracksActivityLog: boolean;
+  gitignoreUpdated: boolean;
   warnings: string[];
 }
 
@@ -106,7 +108,8 @@ export function detectComponentsPath(cwd: string): string | null {
  *   `cwd` before being written to the config.
  * @returns The resolved config path, the normalized components path, whether
  *   Storybook and Figma Code Connect were detected at `cwd`, whether `cwd` is a
- *   git repository, and any non-fatal warnings produced during validation.
+ *   git repository, whether the cache directory was added to `.gitignore`, and
+ *   any non-fatal warnings produced during validation.
  * @throws If `componentsPath` does not exist, is not a directory, or is outside
  *   the project root.
  * @throws If `cerebro.config.json` already exists in `cwd`.
@@ -135,7 +138,8 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
 
   const usesStorybook = detectStorybook(cwd);
   const usesFigmaCodeConnect = detectCodeConnect(cwd);
-  const tracksActivityLog = detectGitRepo(cwd);
+  const isGitRepo = detectGitRepo(cwd);
+  const tracksActivityLog = isGitRepo;
 
   writeConfig(cwd, {
     componentsPath: normalized,
@@ -145,12 +149,55 @@ export function init({ cwd, componentsPath }: InitOptions): InitResult {
     activityLogDepth: DEFAULT_ACTIVITY_LOG_DEPTH,
   });
 
+  let gitignoreUpdated = false;
+  if (isGitRepo) {
+    const outcome = ignoreCacheDir(cwd);
+    gitignoreUpdated = outcome.updated;
+    if (outcome.warning !== undefined) warnings.push(outcome.warning);
+  }
+
   return {
     configPath,
     componentsPath: normalized,
     usesStorybook,
     usesFigmaCodeConnect,
     tracksActivityLog,
+    gitignoreUpdated,
     warnings,
   };
+}
+
+/**
+ * Ensures the Cerebro cache directory is gitignored, so the re-derivable Scan
+ * result cache is never committed. Appends `.cerebro/` to the project's
+ * `.gitignore` — creating the file when absent — unless an entry already
+ * covers it. Best-effort: a read or write failure is reported, not thrown.
+ *
+ * @param cwd - The project root whose `.gitignore` is updated.
+ * @returns Whether the entry was newly added, and a warning when the
+ *   `.gitignore` could not be updated.
+ */
+function ignoreCacheDir(cwd: string): { updated: boolean; warning?: string } {
+  const entry = `${CACHE_DIR}/`;
+  const gitignorePath = resolve(cwd, ".gitignore");
+
+  try {
+    let existing = "";
+    try {
+      existing = readFileSync(gitignorePath, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+
+    const alreadyIgnored = existing
+      .split("\n")
+      .some((line) => line.trim() === entry || line.trim() === CACHE_DIR);
+    if (alreadyIgnored) return { updated: false };
+
+    const prefix = existing.length === 0 || existing.endsWith("\n") ? existing : `${existing}\n`;
+    writeFileSync(gitignorePath, `${prefix}${entry}\n`);
+    return { updated: true };
+  } catch (err) {
+    return { updated: false, warning: `could not update .gitignore: ${(err as Error).message}` };
+  }
 }

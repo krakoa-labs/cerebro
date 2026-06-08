@@ -3,7 +3,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { CONFIG_FILENAME } from "./config.js";
 import { CONVENTIONAL_COMPONENTS_PATHS, detectComponentsPath, init } from "./init.js";
-import { writeScanResult } from "./scan-cache.js";
+import { CACHE_DIR, writeScanResult } from "./scan-cache.js";
 import { scan } from "./scan.js";
 
 const program = new Command();
@@ -34,6 +34,9 @@ program
       console.log(
         pc.green(`Created ${CONFIG_FILENAME} (componentsPath: ${result.componentsPath})`),
       );
+      if (result.gitignoreUpdated) {
+        console.log(pc.green(`Added ${CACHE_DIR}/ to .gitignore`));
+      }
     } catch (err) {
       console.error(pc.red(`Error: ${(err as Error).message}`));
       process.exit(1);
