@@ -143,3 +143,21 @@ export function readHeadCommit(cwd: string): HeadCommit | null {
 
   return { sha, committedAt };
 }
+
+/**
+ * Detects whether the git work tree has uncommitted changes — staged,
+ * unstaged, or untracked files — under `cwd`. The check is scoped to `cwd` so
+ * that, when the scanned project is a subdirectory of a larger repository,
+ * unrelated changes elsewhere do not count as dirtiness. A Scan of a dirty
+ * tree reads files that may not match HEAD, so its scannedCommit anchor is
+ * best-effort rather than reproducible.
+ *
+ * @param cwd - The scanned project root; the status is limited to this subtree.
+ * @returns `true` when `git status` reports any change under `cwd`; `false`
+ *   when the subtree is clean or git could not produce a status.
+ */
+export function isWorkingTreeDirty(cwd: string): boolean {
+  const result = spawnSync("git", ["status", "--porcelain", "--", "."], { cwd, encoding: "utf8" });
+  if (result.status !== 0) return false;
+  return result.stdout.trim().length > 0;
+}

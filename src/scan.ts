@@ -13,6 +13,7 @@ import {
   type ActivityLogEntry,
   type GitAvailability,
   inspectGit,
+  isWorkingTreeDirty,
   readActivityLog,
   readHeadCommit,
 } from "./git.js";
@@ -133,6 +134,11 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   }
   if (tracksActivityLog && git.shallow) {
     warnings.push("shallow clone — activity log may be truncated");
+  }
+  if (git.available && isWorkingTreeDirty(cwd)) {
+    warnings.push(
+      "working tree has uncommitted changes; scanned the working tree, not the committed state",
+    );
   }
   const produceActivityLog = tracksActivityLog && git.available;
 

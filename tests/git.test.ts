@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { detectGitRepo, inspectGit, readActivityLog, readHeadCommit } from "../src/git.js";
+import {
+  detectGitRepo,
+  inspectGit,
+  isWorkingTreeDirty,
+  readActivityLog,
+  readHeadCommit,
+} from "../src/git.js";
 
 // Pin the commit identity through environment variables: they outrank both
 // `-c user.*` config and any GIT_* vars a surrounding git hook may export.
@@ -162,5 +168,45 @@ describe("readHeadCommit", () => {
     expect(head?.sha).toBe(expectedSha);
     expect(head?.sha).toMatch(/^[0-9a-f]{40}$/);
     expect(Number.isNaN(Date.parse(head?.committedAt ?? ""))).toBe(false);
+  });
+});
+
+describe("isWorkingTreeDirty", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-dirty-"));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  function commitInitial(): void {
+    spawnSync("git", ["init"], { cwd });
+    writeFileSync(join(cwd, "file.txt"), "content");
+    spawnSync("git", ["add", "."], { cwd });
+    spawnSync("git", ["commit", "-m", "initial"], { cwd, env: COMMIT_ENV });
+  }
+
+  it("returns false outside any git repository", () => {
+    expect(isWorkingTreeDirty(cwd)).toBe(false);
+  });
+
+  it("returns false for a clean working tree", () => {
+    commitInitial();
+    expect(isWorkingTreeDirty(cwd)).toBe(false);
+  });
+
+  it("returns true with an untracked file", () => {
+    commitInitial();
+    writeFileSync(join(cwd, "untracked.txt"), "new");
+    expect(isWorkingTreeDirty(cwd)).toBe(true);
+  });
+
+  it("returns true with an unstaged modification", () => {
+    commitInitial();
+    writeFileSync(join(cwd, "file.txt"), "changed");
+    expect(isWorkingTreeDirty(cwd)).toBe(true);
   });
 });

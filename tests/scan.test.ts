@@ -900,6 +900,20 @@ describe("scan activity log", () => {
 
     expect(result.scannedCommit).toBe(expectedSha);
     expect(Number.isNaN(Date.parse(result.committedAt ?? ""))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("uncommitted changes"))).toBe(false);
+  });
+
+  it("warns when the working tree is dirty", () => {
+    spawnSync("git", ["init"], { cwd });
+    writeTrackingConfig();
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    commitAll("add Button");
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "// edited after commit");
+
+    const result = scan({ cwd });
+
+    expect(result.warnings.some((w) => w.includes("uncommitted changes"))).toBe(true);
   });
 
   it("omits the activity log when tracking is off", () => {
