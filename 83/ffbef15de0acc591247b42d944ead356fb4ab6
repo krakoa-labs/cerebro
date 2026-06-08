@@ -1,0 +1,25 @@
+src/cli.ts
+  s_57d72bc8428f44::t_896b74b4d47146 126-128
+  s_57d72bc8428f44::t_e246c795975149 6
+  s_57d72bc8428f44::t_5711f9287898b1 48-49
+tests/scan-cache.test.ts
+  s_57d72bc8428f44::t_ce187b9173599d 1-51
+src/scan-cache.ts
+  s_57d72bc8428f44::t_2e77f05936bafb 1-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "83ffbef15de0acc591247b42d944ead356fb4ab6",
+  "prompts": {},
+  "sessions": {
+    "s_57d72bc8428f44": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5923f7c2-e4b1-47a6-8fd7-d5c7a189bb56",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Steve Bourgoin <stiv.aw@gmail.com>"
+    }
+  }
+}
