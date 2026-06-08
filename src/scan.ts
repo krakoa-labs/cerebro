@@ -9,7 +9,13 @@ import { detectDeprecation } from "./deprecation-detector.js";
 import type { ExportLookup } from "./export-resolution.js";
 import { readDocumentUrlSubstitutions } from "./figma-config.js";
 import { detectForwardRefWithoutRef } from "./forward-ref-detector.js";
-import { type ActivityLogEntry, type GitAvailability, inspectGit, readActivityLog } from "./git.js";
+import {
+  type ActivityLogEntry,
+  type GitAvailability,
+  inspectGit,
+  readActivityLog,
+  readHeadCommit,
+} from "./git.js";
 import { detectMemoWithChildren } from "./memo-children-detector.js";
 import { detectNestedComponentDefinition } from "./nested-component-detector.js";
 import { type ParsedSource, parseSource } from "./parse-source.js";
@@ -58,6 +64,8 @@ export interface ScannedComponent {
 export interface ScanResult {
   schemaVersion: number;
   toolVersion: string;
+  scannedCommit: string | null;
+  committedAt: string | null;
   config: CerebroConfig;
   components: ScannedComponent[];
   warnings: string[];
@@ -71,10 +79,11 @@ export interface ScanResult {
  * @param options - The scan options.
  * @param options.cwd - The project root directory.
  * @returns The Scan result envelope: a `schemaVersion`, the `toolVersion` that
- *   produced it, the `config` snapshot it ran with, the alphabetically-sorted
- *   list of Components with their source paths relative to `cwd`, any non-fatal
- *   warnings produced during the scan, and the git availability of the scanned
- *   project.
+ *   produced it, the `scannedCommit` and its `committedAt` (both `null` outside
+ *   a git repository), the `config` snapshot it ran with, the alphabetically-
+ *   sorted list of Components with their source paths relative to `cwd`, any
+ *   non-fatal warnings produced during the scan, and the git availability of
+ *   the scanned project.
  * @throws If the config is missing, invalid, or points to a non-existent
  *   components root, or if no barrel index file is found.
  */
@@ -118,6 +127,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   const warnings: string[] = [...parseWarnings];
 
   const git = inspectGit(cwd);
+  const head = readHeadCommit(cwd);
   if (tracksActivityLog && !git.available) {
     warnings.push("activity log requested but the project is not a git repository");
   }
@@ -249,6 +259,8 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   return {
     schemaVersion: SCHEMA_VERSION,
     toolVersion: TOOL_VERSION,
+    scannedCommit: head?.sha ?? null,
+    committedAt: head?.committedAt ?? null,
     config,
     components: sortedComponents,
     warnings,

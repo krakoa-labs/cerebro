@@ -115,3 +115,31 @@ function parseLogRecord(record: string): ActivityLogEntry | null {
 
   return { sha, committedAt, authorName, authorEmail, subject: rest.join(FIELD_SEPARATOR) };
 }
+
+export interface HeadCommit {
+  sha: string;
+  committedAt: string;
+}
+
+/**
+ * Reads the commit at HEAD — its full SHA and committer date (strict ISO 8601,
+ * the same `%cI` primitive the activity log uses) — to anchor a Scan result in
+ * time. Reads the committed state, so it is unaffected by the working tree.
+ *
+ * @param cwd - The directory git runs in — the design system root.
+ * @returns The HEAD commit, or `null` when `cwd` is not a git work tree, has no
+ *   commits yet, or git could not produce the record.
+ */
+export function readHeadCommit(cwd: string): HeadCommit | null {
+  const format = ["%H", "%cI"].join(FIELD_SEPARATOR);
+  const result = spawnSync("git", ["log", "-1", `--pretty=format:${format}`], {
+    cwd,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return null;
+
+  const [sha, committedAt] = result.stdout.trim().split(FIELD_SEPARATOR);
+  if (sha === undefined || committedAt === undefined || sha === "") return null;
+
+  return { sha, committedAt };
+}

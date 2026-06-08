@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { detectGitRepo, inspectGit, readActivityLog } from "../src/git.js";
+import { detectGitRepo, inspectGit, readActivityLog, readHeadCommit } from "../src/git.js";
 
 // Pin the commit identity through environment variables: they outrank both
 // `-c user.*` config and any GIT_* vars a surrounding git hook may export.
@@ -124,5 +124,43 @@ describe("readActivityLog", () => {
     commit("file.txt", "x", "only commit");
 
     expect(readActivityLog(cwd, "untouched.txt", 20)).toEqual([]);
+  });
+});
+
+describe("readHeadCommit", () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "cerebro-head-"));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("returns null outside any git repository", () => {
+    expect(readHeadCommit(cwd)).toBeNull();
+  });
+
+  it("returns null for a repository with no commits yet", () => {
+    spawnSync("git", ["init"], { cwd });
+    expect(readHeadCommit(cwd)).toBeNull();
+  });
+
+  it("returns the HEAD sha and its committer date", () => {
+    spawnSync("git", ["init"], { cwd });
+    writeFileSync(join(cwd, "file.txt"), "content");
+    spawnSync("git", ["add", "."], { cwd });
+    spawnSync("git", ["commit", "-m", "initial"], { cwd, env: COMMIT_ENV });
+
+    const head = readHeadCommit(cwd);
+    const expectedSha = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd,
+      encoding: "utf8",
+    }).stdout.trim();
+
+    expect(head?.sha).toBe(expectedSha);
+    expect(head?.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(Number.isNaN(Date.parse(head?.committedAt ?? ""))).toBe(false);
   });
 });

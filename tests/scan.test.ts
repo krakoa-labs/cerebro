@@ -204,6 +204,8 @@ describe("scan", () => {
 
     expect(result.schemaVersion).toBe(SCHEMA_VERSION);
     expect(result.toolVersion).toBe(manifest.version);
+    expect(result.scannedCommit).toBeNull();
+    expect(result.committedAt).toBeNull();
     expect(result.config).toEqual({
       componentsPath: "src/components",
       usesStorybook: false,
@@ -881,6 +883,23 @@ describe("scan activity log", () => {
     const result = scan({ cwd });
 
     expect(result.components[0]?.activityLog?.map((e) => e.subject)).toEqual(["add Button"]);
+  });
+
+  it("anchors the envelope to HEAD when the project is a git repo", () => {
+    spawnSync("git", ["init"], { cwd });
+    writeTrackingConfig();
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+    commitAll("add Button");
+
+    const result = scan({ cwd });
+    const expectedSha = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd,
+      encoding: "utf8",
+    }).stdout.trim();
+
+    expect(result.scannedCommit).toBe(expectedSha);
+    expect(Number.isNaN(Date.parse(result.committedAt ?? ""))).toBe(false);
   });
 
   it("omits the activity log when tracking is off", () => {
