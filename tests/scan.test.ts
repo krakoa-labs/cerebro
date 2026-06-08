@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CONFIG_FILENAME } from "../src/config.js";
-import { scan } from "../src/scan.js";
+import { SCHEMA_VERSION, scan } from "../src/scan.js";
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const FIXTURE_BARREL_BASICS = join(REPO_ROOT, "fixtures", "barrel-basics");
@@ -189,6 +189,19 @@ describe("scan", () => {
       },
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  it("wraps the result in a versioned envelope", () => {
+    writeConfig(cwd, "src/components");
+    writeBarrel(cwd, "src/components", `export { Button } from "./Button";`);
+    writeFileSync(join(cwd, "src", "components", "Button.tsx"), "");
+
+    const result = scan({ cwd });
+
+    expect(result.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(result).toHaveProperty("components");
+    expect(result).toHaveProperty("warnings");
+    expect(result).toHaveProperty("git");
   });
 
   it("reports git availability for the scanned project", () => {

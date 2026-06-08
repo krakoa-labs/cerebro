@@ -121,7 +121,7 @@ program
         ),
       );
 
-      console.log(JSON.stringify(result.components, null, 2));
+      console.log(JSON.stringify(result, null, 2));
     } catch (err) {
       console.error(pc.red(`Error: ${(err as Error).message}`));
       process.exit(1);
