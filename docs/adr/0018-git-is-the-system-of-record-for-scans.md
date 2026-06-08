@@ -1,0 +1,13 @@
+# Git is the scan's system of record; the persisted scan is a re-derivable cache
+
+Because a Scan result is a pure function of the committed code (ADR-0017), git already holds every state a Scan can describe, so the persisted result is treated as a cache, not a system of record: it is written to `.cerebro/scan.json` and added to `.gitignore` at `init`, never committed. History — trends over time — is not stored as an accumulating time-series; it is re-derived on demand by scanning past commits or tags. Re-deriving loses no data (git holds the states) and yields a *higher-quality* trend than incremental storage would: every point is computed with one consistent set of indicator definitions, rather than whatever cerebro version was current when each point was first stored. Two further decisions follow from "the tool does not own the truth": `cerebro scan` reads the working tree and never blocks — it is permissive like `storybook build`, so a developer can preview a config change before committing — and the guarantee that a *published* snapshot is a clean, reproducible commit is relocated to the publish step (CI scanning a clean release ref, like `storybook deploy`), not policed by the scan; a dirty working tree is surfaced only as a non-blocking `warnings` entry, never a structured field, and that warning is absent exactly when it matters, because published snapshots come from clean checkouts.
+
+## Considered options
+
+- **Commit the persisted result** — gives a diffable "this PR regressed quality" signal, but it is a derived artifact that goes stale the instant the next commit lands and churns every review. Rejected; the PR signal is better delivered later as a dedicated CI check that comments on the diff, not as a committed file.
+- **Store an accumulating time-series for history** — survives git-history rewrites and avoids recompute cost, but drifts as indicator definitions change between cerebro versions and duplicates what git already holds. Rejected in favor of re-derivation from git.
+- **Block the scan on a dirty tree** — guarantees every result is reproducible from its commit, but breaks the legitimate config-preview flow and the post-`init` flow (where committing the freshly written config is itself a pending change). Rejected in favor of the permissive-build / strict-publish split.
+
+## Accepted consequence
+
+Re-deriving history requires recompute — checking out and scanning N commits — and cannot describe a state that has been removed from history (a squashed or pruned commit). The cost is bounded by sampling (release tags, or commits touching the Components root) and is judged worth the elimination of definition drift.

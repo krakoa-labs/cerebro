@@ -1,6 +1,6 @@
 # Cerebro
 
-Cerebro is an open-source CLI that scans React/TypeScript design systems and produces deterministic indicators describing their inventory and internal quality, plus per-Component raw records for a consumer to interpret — a git-history activity log and a list of Figma Code Connect connections. These outputs are intended to feed a future web dashboard and to help design system teams make informed decisions about adoption, migration, and maintenance.
+Cerebro is an open-source CLI that scans React/TypeScript design systems and produces deterministic indicators describing their inventory and internal quality, plus per-Component raw records for a consumer to interpret — a git-history activity log and a list of Figma Code Connect connections. A scan emits these outputs inside a deterministic **Scan result** envelope, persisted as a gitignored cache with git as the system of record — intended to feed a future web dashboard and to help design system teams make informed decisions about adoption, migration, and maintenance.
 
 ## Language
 
@@ -11,6 +11,10 @@ _Avoid_: Component library (overlaps but is narrower)
 **Scan**:
 A single, deterministic analysis run of a design system that produces a complete set of indicators.
 _Avoid_: Crawl, parse, inspect
+
+**Scan result**:
+The complete output of a single Scan, emitted as a deterministic envelope rather than a bare list: a `schemaVersion` (the shape contract a consumer reads against), a `toolVersion` (the cerebro version that produced it, used as a cache-staleness key — a persisted result from a different cerebro is stale and must be re-derived), the `scannedCommit` and its `committedAt` (the committer date that anchors the result in time — `null` when the design system is not a git repository), the `config` snapshot, the per-Component `components`, the scan `warnings`, and the `git` availability. A pure function of (commit, config, toolVersion): the same committed state always re-derives the same result. Persisted to a gitignored cache (`.cerebro/scan.json`), never committed — git is the system of record, and history is re-derived by scanning past commits, never stored (see ADR-0017, ADR-0018).
+_Avoid_: Report, output (too generic), snapshot (names the act of taking one, not the envelope it yields), scan.json (names the cache file, not the concept)
 
 **Indicator**:
 A deterministic value produced by a scan — for example an inventory count or an internal quality measure — derived purely from static analysis and git history.
@@ -93,6 +97,8 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 ## Relationships
 
 - A **Scan** operates on a **Design system** and produces a set of **Indicators**
+- A **Scan** emits a **Scan result** — the deterministic envelope wrapping its Indicators and raw records, anchored in time by `committedAt` (the committer date of its `scannedCommit`), never by the wall-clock time the scan ran
+- A **Scan result** is persisted to a gitignored cache (`.cerebro/scan.json`); git is the system of record, and history is re-derived by scanning past commits, never stored
 - A **Component** is enumerated from the public barrel exports of a **Design system**'s **Components root**
 - A **Fixture** is a minimal **Design system** used to validate Cerebro scans in tests
 - A **DS developer** runs **Scans**; a **Lead DS** consumes the **Indicators** they produce
@@ -120,6 +126,9 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 >
 > **Lead DS:** "And `dependsOn` — can it tell me which Component is riskiest to change?"
 > **Dev:** "Not by itself. `dependsOn` is the raw **Internal dependency** edges — A imports B. The dashboard inverts them to get fan-in: how many Components import Button. 'Riskiest' is a verdict the consumer builds on top of the edges — Cerebro stores the edges, not the verdict."
+>
+> **Lead DS:** "If I want the trend of untyped Components over the last year, does Cerebro store that history?"
+> **Dev:** "No — a **Scan result** is a pure function of the commit, so git already holds every past state. We re-derive the trend by scanning past commits or release tags. Nothing is stored to drift, and every point is measured with the same indicator definitions. The persisted `scan.json` is just a cache; git is the system of record."
 
 ## Flagged ambiguities
 
@@ -136,3 +145,7 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - detecting an **Internal dependency** was ambiguous between (a) a Component's source *imports* another and (b) a Component's source *renders* the other in JSX. Resolved as (a), import-based: it is deterministic and cheap (static `import` analysis) and stays in the "what the code declares" register that **Deprecation** and **Props typing** occupy, rather than the "what the code does" register. The cost — an imported-but-unrendered Component counts as an edge — is accepted: it over-reports slightly, the safe direction for a record meant to surface change blast radius.
 - detecting an **External dependency** was ambiguous between (a) a module specifier that fails to resolve to a local source file and (b) a bare specifier — non-relative and matching no tsconfig path alias. Resolved as (b): rule (a) would misclassify an internal alias that happens not to resolve (a `.js` target, an unsupported folder layout) as external. Whether a bare specifier resolves to an installed package is not consulted — a bare specifier *is* the External dependency.
 - excluding `react` from **External dependency** is a deliberate deviation from the principle — followed by **Internal dependency**, the **Activity log** and the **Code Connect connection** — that a raw record records everything it finds without filtering. Resolved and kept: `react` is the JSX runtime, so every Component depends on it by construction; recording it would add a guaranteed-present entry carrying no signal. The exclusion is `react` alone — `react-dom` is a deliberate, optional import (`createPortal`, `flushSync`) and is recorded. Node built-ins are also absent, but on a separate ground: they are not packages (no version, no `package.json`), so they fall outside the concept rather than being a filtered exception. See ADR-0010.
+- "versioning" of a **Scan result** was ambiguous between (a) a schema version on the envelope and (b) keeping many results as a stored history. Resolved as only (a): `schemaVersion` (the envelope's shape) plus `toolVersion` (a cache-staleness key). History is never stored as an accumulating time-series — it is re-derived from git, the system of record, which loses no data and avoids indicator-definition drift across stored points. See ADR-0017, ADR-0018.
+- a wall-clock `scannedAt` was considered for the **Scan result** envelope and rejected on the same ground as the time-windowed activity log (ADR-0006): it makes the envelope non-deterministic, and worse, collapses a backfilled history (twelve past commits scanned today) onto a single point on the time axis. The temporal anchor is `committedAt` — the committer date of `scannedCommit` — which is deterministic and spreads backfilled points correctly. See ADR-0017.
+- whether to commit the persisted **Scan result** was resolved against it: the result is a derived artifact, stale the moment the next commit lands, so it is written to a gitignored cache (`.cerebro/scan.json`), not committed. The diffable "this PR regressed quality" signal that committing would offer is deferred to a separate future CI check, not the raw artifact. See ADR-0018.
+- handling a dirty working tree was ambiguous between blocking the scan and recording a `dirty` flag on the result. Resolved as neither: `cerebro scan` is permissive (it reads the working tree like `storybook build`, so a config change can be previewed before committing), the clean-snapshot guarantee lives in the publish step (CI on a release ref, like `storybook deploy`), and a dirty tree only raises a non-blocking warning — absent exactly when it matters, since published snapshots come from clean checkouts. See ADR-0018.
