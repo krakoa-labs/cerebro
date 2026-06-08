@@ -3,6 +3,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { CONFIG_FILENAME } from "./config.js";
 import { CONVENTIONAL_COMPONENTS_PATHS, detectComponentsPath, init } from "./init.js";
+import { writeScanResult } from "./scan-cache.js";
 import { scan } from "./scan.js";
 
 const program = new Command();
@@ -44,7 +45,8 @@ program
   .description("Scan the design system and list its public Components.")
   .action(() => {
     try {
-      const result = scan({ cwd: process.cwd() });
+      const cwd = process.cwd();
+      const result = scan({ cwd });
       for (const warning of result.warnings) {
         console.warn(pc.yellow(`Warning: ${warning}`));
       }
@@ -120,6 +122,9 @@ program
           `${componentCount} ${componentNoun} found. ${totals.total} ${testNoun} (${totals.skipped} skipped, ${totals.only} only).${storiesFragment}${connectionsFragment}${deprecatedFragment}${untypedFragment}${classFragment}${memoFragment}${nestingFragment}${refFragment}${gitFragment}\n`,
         ),
       );
+
+      const cachePath = writeScanResult(cwd, result);
+      process.stderr.write(pc.green(`Wrote ${cachePath}\n`));
 
       console.log(JSON.stringify(result, null, 2));
     } catch (err) {
