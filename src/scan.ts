@@ -23,6 +23,7 @@ import {
   analyzeStoriesForComponent,
 } from "./stories-counter.js";
 import { type TestCounts, ZERO_TESTS, countTestsForComponent } from "./tests-counter.js";
+import { TOOL_VERSION } from "./tool-version.js";
 import { readTsconfigAliases } from "./tsconfig-aliases.js";
 
 /**
@@ -56,6 +57,7 @@ export interface ScannedComponent {
 
 export interface ScanResult {
   schemaVersion: number;
+  toolVersion: string;
   components: ScannedComponent[];
   warnings: string[];
   git: GitAvailability;
@@ -67,10 +69,10 @@ export interface ScanResult {
  *
  * @param options - The scan options.
  * @param options.cwd - The project root directory.
- * @returns The Scan result envelope: a `schemaVersion`, the alphabetically-
- *   sorted list of Components with their source paths relative to `cwd`, any
- *   non-fatal warnings produced during the scan, and the git availability of
- *   the scanned project.
+ * @returns The Scan result envelope: a `schemaVersion`, the `toolVersion` that
+ *   produced it, the alphabetically-sorted list of Components with their source
+ *   paths relative to `cwd`, any non-fatal warnings produced during the scan,
+ *   and the git availability of the scanned project.
  * @throws If the config is missing, invalid, or points to a non-existent
  *   components root, or if no barrel index file is found.
  */
@@ -241,7 +243,13 @@ export function scan({ cwd }: ScanOptions): ScanResult {
     warnings.push(`barrel "${barrelRel}" has no named exports`);
   }
 
-  return { schemaVersion: SCHEMA_VERSION, components: sortedComponents, warnings, git };
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    toolVersion: TOOL_VERSION,
+    components: sortedComponents,
+    warnings,
+    git,
+  };
 }
 
 /**

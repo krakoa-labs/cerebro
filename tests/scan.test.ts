@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -198,7 +198,12 @@ describe("scan", () => {
 
     const result = scan({ cwd });
 
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+      version: string;
+    };
+
     expect(result.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(result.toolVersion).toBe(manifest.version);
     expect(result).toHaveProperty("components");
     expect(result).toHaveProperty("warnings");
     expect(result).toHaveProperty("git");
