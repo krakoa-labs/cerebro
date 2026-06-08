@@ -1,0 +1,27 @@
+CONTEXT.md
+  s_57d72bc8428f44::t_b3131735027603 100-101
+  s_57d72bc8428f44::t_515292a61acc5b 129-131
+  s_57d72bc8428f44::t_9194710c22d954 3
+  s_57d72bc8428f44::t_098a0c30bc87cf 15-18
+  s_57d72bc8428f44::t_5ef4825566c9f4 148-151
+docs/adr/0018-git-is-the-system-of-record-for-scans.md
+  s_57d72bc8428f44::t_64569f453ee479 1-13
+docs/adr/0017-scan-output-is-a-deterministic-envelope.md
+  s_57d72bc8428f44::t_d2db79cad58a78 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "ba938261ec921eaf80853dab76d3b6bd147b0e4c",
+  "prompts": {},
+  "sessions": {
+    "s_57d72bc8428f44": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5923f7c2-e4b1-47a6-8fd7-d5c7a189bb56",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Steve Bourgoin <stiv.aw@gmail.com>"
+    }
+  }
+}
