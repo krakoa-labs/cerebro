@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CONFIG_FILENAME } from "../src/config.js";
+import { CONFIG_FILENAME, DEFAULT_ACTIVITY_LOG_DEPTH } from "../src/config.js";
 import { SCHEMA_VERSION, scan } from "../src/scan.js";
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -204,6 +204,13 @@ describe("scan", () => {
 
     expect(result.schemaVersion).toBe(SCHEMA_VERSION);
     expect(result.toolVersion).toBe(manifest.version);
+    expect(result.config).toEqual({
+      componentsPath: "src/components",
+      usesStorybook: false,
+      usesFigmaCodeConnect: false,
+      tracksActivityLog: false,
+      activityLogDepth: DEFAULT_ACTIVITY_LOG_DEPTH,
+    });
     expect(result).toHaveProperty("components");
     expect(result).toHaveProperty("warnings");
     expect(result).toHaveProperty("git");

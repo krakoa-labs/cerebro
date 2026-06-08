@@ -2,7 +2,7 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { type BarrelWarning, type ExportShape, type ParsedExport, parseBarrel } from "./barrel.js";
 import { type FigmaConnection, collectConnectionsForComponent } from "./code-connect-collector.js";
-import { readConfig } from "./config.js";
+import { type CerebroConfig, readConfig } from "./config.js";
 import { type DefinitionKind, detectDefinitionKind } from "./definition-kind-detector.js";
 import { type DependencyContext, collectDependenciesForComponent } from "./dependency-collector.js";
 import { detectDeprecation } from "./deprecation-detector.js";
@@ -58,6 +58,7 @@ export interface ScannedComponent {
 export interface ScanResult {
   schemaVersion: number;
   toolVersion: string;
+  config: CerebroConfig;
   components: ScannedComponent[];
   warnings: string[];
   git: GitAvailability;
@@ -70,20 +71,22 @@ export interface ScanResult {
  * @param options - The scan options.
  * @param options.cwd - The project root directory.
  * @returns The Scan result envelope: a `schemaVersion`, the `toolVersion` that
- *   produced it, the alphabetically-sorted list of Components with their source
- *   paths relative to `cwd`, any non-fatal warnings produced during the scan,
- *   and the git availability of the scanned project.
+ *   produced it, the `config` snapshot it ran with, the alphabetically-sorted
+ *   list of Components with their source paths relative to `cwd`, any non-fatal
+ *   warnings produced during the scan, and the git availability of the scanned
+ *   project.
  * @throws If the config is missing, invalid, or points to a non-existent
  *   components root, or if no barrel index file is found.
  */
 export function scan({ cwd }: ScanOptions): ScanResult {
+  const config = readConfig(cwd);
   const {
     componentsPath: componentsPathRel,
     usesStorybook,
     usesFigmaCodeConnect,
     tracksActivityLog,
     activityLogDepth,
-  } = readConfig(cwd);
+  } = config;
 
   const componentsRoot = resolve(cwd, componentsPathRel);
   const rootStat = statSync(componentsRoot, { throwIfNoEntry: false });
@@ -246,6 +249,7 @@ export function scan({ cwd }: ScanOptions): ScanResult {
   return {
     schemaVersion: SCHEMA_VERSION,
     toolVersion: TOOL_VERSION,
+    config,
     components: sortedComponents,
     warnings,
     git,
