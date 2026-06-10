@@ -1,10 +1,13 @@
 # Cerebro
 
-Cerebro is an open-source CLI that scans React/TypeScript design systems and produces deterministic indicators describing their inventory, internal quality, and history.
+Cerebro is a CLI that scans a React/TypeScript design system and produces a deterministic JSON report of every public Component — what it exports, how it's typed, whether it's tested, what it depends on, and how it changes over time.
 
-## Status
+No telemetry. No runtime sampling. Pure static analysis and git history, always reproducible from the same commit.
 
-Pre-1.0, under active development. APIs and output formats may change.
+## Requirements
+
+- Node.js >= 20
+- A React/TypeScript design system with a barrel file (`index.ts` or `index.tsx`) exporting its public Components
 
 ## Install
 
@@ -19,33 +22,53 @@ npm install -g @krakoa-labs/cerebro
 cerebro --help
 ```
 
-## Usage
-
-### Initialize
-
-Run `init` from the root of your design system to create a `cerebro.config.json`. Cerebro auto-detects your components directory, Storybook, Figma Code Connect, and git:
+## Quick start
 
 ```bash
+# 1. Initialize — creates cerebro.config.json
 cerebro init
-```
 
-Or pass the path explicitly:
-
-```bash
-cerebro init src/ui
-```
-
-### Scan
-
-Run `scan` to analyze every Component exported from your public barrel. Cerebro emits a deterministic JSON **Scan result** — inventory, internal quality indicators, git activity, dependencies, and more:
-
-```bash
+# 2. Scan — emits a JSON Scan result to stdout
 cerebro scan
 ```
 
-The result is printed to stdout and cached to `.cerebro/scan.json`.
+## What it detects
 
-### Example output
+For every Component exported from your public barrel, Cerebro reports:
+
+| Category | Indicators |
+| --- | --- |
+| **Inventory** | Component name, source path, export shape (named/renamed/default/barrel-local), definition kind (function/class) |
+| **Quality** | Props typing (typed/untyped), test count (total/skipped/only), deprecation status |
+| **Storybook** | Story count by CSF generation (CSF1/CSF2/CSF3) — when Storybook is detected |
+| **Figma** | Code Connect connections with resolved Figma URLs — when `@figma/code-connect` is detected |
+| **Dependencies** | Internal Component-to-Component edges (`dependsOn`), external package imports |
+| **Activity** | Recent commits touching each Component's scope (count configurable) — when in a git repo |
+| **Footguns** | Inert `memo()` with element-typed children, nested component definitions, `forwardRef` that drops the ref |
+
+## Configuration
+
+`cerebro init` writes a `cerebro.config.json` at your project root:
+
+```jsonc
+{
+  "componentsPath": "src/components",
+  "usesStorybook": true,
+  "usesFigmaCodeConnect": false,
+  "tracksActivityLog": true,
+  "activityLogDepth": 20
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `componentsPath` | Directory containing the public barrel index |
+| `usesStorybook` | Enables story counting indicators |
+| `usesFigmaCodeConnect` | Enables Code Connect connection collection |
+| `tracksActivityLog` | Enables per-Component git activity logs |
+| `activityLogDepth` | Number of recent commits per Component (default: 20) |
+
+## Example output
 
 ```jsonc
 {
@@ -61,21 +84,24 @@ The result is printed to stdout and cached to `.cerebro/scan.json`.
       "propsTyping": "typed",
       "definitionKind": "function",
       "tests": { "total": 12, "skipped": 0, "only": 0 },
+      "stories": { "total": 8, "csf1": 0, "csf2": 3, "csf3": 5 },
       "dependsOn": ["Icon", "Spinner"],
       "externalDependencies": ["@radix-ui/react-slot", "clsx"]
     }
-  ]
+  ],
+  "warnings": [],
+  "git": { "available": true, "shallow": false }
 }
 ```
 
 ## Development
 
 ```bash
-npm install        # Install dependencies
-npm run build      # Compile with tsup
-npm test           # Run vitest
-npm run typecheck  # tsc --noEmit
-npm run lint       # Biome check
+npm install
+npm run build       # Compile with tsup
+npm test            # Run vitest
+npm run typecheck   # tsc --noEmit
+npm run lint        # Biome check
 ```
 
 ## Documentation
