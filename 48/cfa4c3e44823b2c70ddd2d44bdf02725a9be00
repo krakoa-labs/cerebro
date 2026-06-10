@@ -1,0 +1,19 @@
+README.md
+  s_0c846e6a45958b::t_0ad9ba22b70c0b 26-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "48cfa4c3e44823b2c70ddd2d44bdf02725a9be00",
+  "prompts": {},
+  "sessions": {
+    "s_0c846e6a45958b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_150f51580ffe3j365vN010SuLY",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "Steve Bourgoin <stiv.aw@gmail.com>"
+    }
+  }
+}
