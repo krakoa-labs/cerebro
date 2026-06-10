@@ -1,7 +1,5 @@
 # Cerebro
 
-> Locate every component across your apps.
-
 Cerebro is an open-source CLI that scans React/TypeScript design systems and produces deterministic indicators describing their inventory, internal quality, and history.
 
 ## Status
