@@ -1,0 +1,21 @@
+README.md
+  s_0c846e6a45958b::t_e29e6d57e7426c 5,7,9-12,32,35,37-39,42,44,46-54,56,58-67,70-76,78,94,98-100,107-111,15
+  s_0c846e6a45958b::t_7464a3d4d21ab3 14,23,26
+  s_0c846e6a45958b::t_00419a69c2a4d2 17-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "d58bcf7df33ad5c97c77b60eab7fc1df52514e79",
+  "prompts": {},
+  "sessions": {
+    "s_0c846e6a45958b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_150f51580ffe3j365vN010SuLY",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "Steve Bourgoin <stiv.aw@gmail.com>"
+    }
+  }
+}
