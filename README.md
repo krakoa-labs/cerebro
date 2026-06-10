@@ -11,14 +11,19 @@ No telemetry. No runtime sampling. Pure static analysis and git history, always 
 
 ## Install
 
+Clone and build:
+
 ```bash
-npx @krakoa-labs/cerebro --help
+git clone https://github.com/krakoa-labs/cerebro.git
+cd cerebro
+npm install
+npm run build
 ```
 
-Or install globally:
+Link globally for use in any design system:
 
 ```bash
-npm install -g @krakoa-labs/cerebro
+npm link
 cerebro --help
 ```
 
