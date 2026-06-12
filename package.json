@@ -13,16 +13,17 @@
   },
   "files": ["dist", "LICENSE", "README.md"],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && vite build dashboard",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "format": "biome format --write",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p dashboard --noEmit",
     "prepare": "lefthook install || true",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build",
+    "dev:dashboard": "vite dashboard"
   },
   "dependencies": {
     "commander": "^12.1.0",
@@ -31,10 +32,18 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
     "@types/node": "^20.17.10",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
     "lefthook": "^1.10.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
+    "vite": "^8.0.16",
     "vitest": "^2.1.8"
   },
   "publishConfig": {

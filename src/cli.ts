@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import pc from "picocolors";
+import { buildDashboard } from "./build.js";
 import { CONFIG_FILENAME } from "./config.js";
 import { CONVENTIONAL_COMPONENTS_PATHS, detectComponentsPath, init } from "./init.js";
 import { CACHE_DIR, writeScanResult } from "./scan-cache.js";
@@ -136,6 +137,37 @@ program
     }
   });
 
+program
+  .command("build")
+  .description("Build the Dashboard: a fresh scan rendered as a hostable static web app.")
+  .action(() => {
+    try {
+      const cwd = process.cwd();
+
+      const { outDir, result } = buildDashboard({ cwd });
+      for (const warning of result.warnings) {
+        console.warn(pc.yellow(`Warning: ${warning}`));
+      }
+
+      const componentCount = result.components.length;
+      const componentNoun = componentCount === 1 ? "Component" : "Components";
+      console.log(pc.dim(`${componentCount} ${componentNoun} scanned.`));
+      console.log(pc.green(`Built Dashboard at ${outDir}`));
+    } catch (err) {
+      console.error(pc.red(`Error: ${(err as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+/**
+ * Resolves the components root for `cerebro init`: the explicit CLI argument
+ * when given, otherwise the conventional location detected on disk.
+ *
+ * @param pathArg - The optional path argument from the CLI.
+ * @param cwd - The project root directory.
+ * @returns The components root, relative to `cwd`.
+ * @throws If no argument was given and no conventional location exists.
+ */
 function resolveComponentsPath(pathArg: string | undefined, cwd: string): string {
   if (pathArg !== undefined) return pathArg;
 

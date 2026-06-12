@@ -84,6 +84,18 @@ _Avoid_: Coupling (a verdict — Internal dependency does not judge), dependency
 A reference from a Component to a third-party package, recorded when the Component's source imports it. Recorded per Component as `externalDependencies` — the deduplicated, alphabetically-sorted list of package names it imports, each normalized from the import's module specifier to its package name (`lodash/debounce` → `lodash`, `@radix-ui/react-dialog/dist` → `@radix-ui/react-dialog`). A specifier is an External dependency when it is non-relative and matches no tsconfig path alias — a bare package specifier — regardless of whether it resolves to an installed package; relative and alias-matching specifiers are internal. Computed over the Component scope with the same import reading as `dependsOn`: static `import` statements only (named, default, type-only, and side-effect), test, story and Code Connect files excluded. `react` is excluded — it is the JSX runtime, constitutive of every Component rather than a chosen library (see ADR-0010) — as are node built-ins, which are not packages. `externalDependencies` is omitted when the Component's own source file cannot be parsed. Like `dependsOn`, an External dependency is *not* an Indicator: it is a raw record handed to a consumer to interpret.
 _Avoid_: Third-party import (names the mechanism, not the Component-to-package relationship), package dependency (redundant), peer dependency (a `package.json` relationship, not what Cerebro records from source)
 
+**Component record**:
+A Component's full slice of a Scan result: its Indicators (Deprecation, Export shape, Props typing, Memo with children, Nested component definition, ForwardRef without ref, tests, stories) *and* its raw records (Activity log, `dependsOn`, `externalDependencies`, `figmaConnections`). The unit a dashboard page displays — saying "a Component's indicators" when the raw records are included is imprecise; the record is the whole slice.
+_Avoid_: Component indicators (omits the raw records), component data (too generic)
+
+**Dashboard**:
+The static web app emitted by `cerebro build` — the consumer of the Scan result that the glossary's raw records defer their verdicts to, hostable anywhere a static site hosts (the Storybook model: `storybook build` → `storybook-static/`). The app itself is a React SPA prebuilt at cerebro's own publish time and shipped inside the package; `cerebro build` runs a fresh Scan (the cache stays a cache, never a required handoff between commands — and `build` inherits `scan`'s permissive dirty-tree behavior, ADR-0018), copies the prebuilt assets to `.cerebro/dist/`, and injects the Scan result into the page — the user's machine never runs a bundler, and cerebro's runtime dependencies stay unchanged. Routes are client-side hash routes (`#/`, `#/components`, `#/components/<Name>`) so the artifact works from `file://` as well as hosted. As the consumer, it derives the documented cheap verdicts — fan-in (inverting `dependsOn`) and broken-connection count (`url: null` entries) — but no staleness judgment, which would reintroduce the wall-clock dependency rejected in ADR-0006. Three views: the Overview, the Component table, and one page per Component record.
+_Avoid_: Report site, static site (too generic), dashboard-as-page (the summary page is the Overview)
+
+**Overview**:
+The index page of the Dashboard, summarizing Indicators across the whole Design system — the HTML promotion of the summary line `cerebro scan` already prints (component count, deprecated, untyped, inert memos, …), not a new derivation.
+_Avoid_: Dashboard (reserved for the whole site), home page, summary (names the content, not the page)
+
 **Fixture**:
 A minimal fake design system kept under `fixtures/` whose sole purpose is to exercise a specific shape Cerebro must handle. Each fixture is paired with at least one test that asserts the expected indicators.
 _Avoid_: Example (implies user-facing demo), sample, test data
@@ -115,6 +127,9 @@ Persona who owns the design system strategy and uses Cerebro indicators to make 
 - A **Component** carries a **Memo with children** indicator, true when it is `memo()`-wrapped with no custom comparator and declares element-typed `children` — the shape in which the memoization is inert
 - A **Component** carries a **Nested component definition** indicator, true when it defines another component inside its render body — the shape that remounts a subtree on every render
 - A **Component** carries a **ForwardRef without ref** indicator, true when it is `forwardRef`-wrapped but never uses the forwarded `ref` — the shape in which a consumer's ref is silently dropped
+
+- The **Dashboard** is the consumer of a **Scan result**: `cerebro build` runs a Scan and renders one **Component record** per Component, plus the **Overview** and the Component table
+- The **Dashboard** derives consumer verdicts the Scan deliberately does not store: fan-in (inverted `dependsOn`) and broken-connection count (`url: null`)
 
 ## Example dialogue
 

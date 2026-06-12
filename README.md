@@ -35,7 +35,14 @@ cerebro init
 
 # 2. Scan — emits a JSON Scan result to stdout
 cerebro scan
+
+# 3. Build — renders a fresh scan as a static web dashboard
+cerebro build
 ```
+
+## Dashboard
+
+`cerebro build` runs a fresh scan and assembles a static web app at `.cerebro/dist/` — open `index.html` directly or host the directory anywhere a static site hosts (the Storybook model). Three views: an Overview of the design system's indicators, a sortable/filterable Component table, and one page per Component with its full record — indicators, Figma connections, dependency neighborhood (including derived fan-in), and activity log. No bundler runs on your machine: the app ships prebuilt inside cerebro and the scan data is injected at build time.
 
 ## What it detects
 
