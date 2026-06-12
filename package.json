@@ -4,6 +4,7 @@
   "description": "Locate every component across your apps.",
   "license": "MIT",
   "type": "module",
+  "packageManager": "pnpm@11.6.0",
   "engines": {
     "node": ">=20"
   },
@@ -21,7 +22,7 @@
     "format": "biome format --write",
     "typecheck": "tsc --noEmit",
     "prepare": "lefthook install || true",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "commander": "^12.1.0",

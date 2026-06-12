@@ -16,14 +16,14 @@ Clone and build:
 ```bash
 git clone https://github.com/krakoa-labs/cerebro.git
 cd cerebro
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
 
 Link globally for use in any design system:
 
 ```bash
-npm link
+pnpm link --global
 cerebro --help
 ```
 
@@ -102,11 +102,11 @@ For every Component exported from your public barrel, Cerebro reports:
 ## Development
 
 ```bash
-npm install
-npm run build       # Compile with tsup
-npm test            # Run vitest
-npm run typecheck   # tsc --noEmit
-npm run lint        # Biome check
+pnpm install
+pnpm build          # Compile with tsup
+pnpm test           # Run vitest
+pnpm typecheck      # tsc --noEmit
+pnpm lint           # Biome check
 ```
 
 ## Documentation
